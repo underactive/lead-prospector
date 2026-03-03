@@ -33,6 +33,7 @@ export function useJobs() {
     searchLocation: string;
     searchLat: number;
     searchLng: number;
+    searchQueries: string[];
   }) {
     const {
       data: { user },
@@ -50,6 +51,7 @@ export function useJobs() {
         search_location: params.searchLocation,
         search_lat: params.searchLat,
         search_lng: params.searchLng,
+        search_queries: params.searchQueries,
       })
       .select()
       .single();
@@ -67,6 +69,7 @@ export function useJobs() {
         searchLocation: params.searchLocation,
         searchLat: params.searchLat,
         searchLng: params.searchLng,
+        searchQueries: params.searchQueries,
       }),
     });
 

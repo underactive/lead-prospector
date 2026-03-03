@@ -7,14 +7,14 @@ export function useContacts() {
   const loading = ref(false);
   const error = ref<string | null>(null);
 
-  async function fetchContactsForFirm(firmId: string) {
+  async function fetchContactsForBusiness(businessId: string) {
     loading.value = true;
     error.value = null;
     try {
       const { data, error: err } = await supabase
         .from('contacts')
         .select('*')
-        .eq('firm_id', firmId)
+        .eq('business_id', businessId)
         .order('seniority_score', { ascending: false });
 
       if (err) throw err;
@@ -26,5 +26,5 @@ export function useContacts() {
     }
   }
 
-  return { contacts, loading, error, fetchContactsForFirm };
+  return { contacts, loading, error, fetchContactsForBusiness };
 }

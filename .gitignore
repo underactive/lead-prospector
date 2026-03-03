@@ -17,3 +17,8 @@ supabase/.branches/
 
 # Build
 packages/frontend/dist/
+packages/frontend/tsconfig.tsbuildinfo
+packages/frontend/src/**/*.d.ts
+packages/frontend/src/**/*.d.ts.map
+packages/frontend/src/**/*.js
+packages/frontend/src/**/*.js.map

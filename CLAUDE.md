@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Lead Prospector** is a full-stack lead generation tool for finding immigration law firms near Austin, TX. It supports two campaign types: local leads (<10mi for in-person visits) and remote leads (>25mi for document shipping). Built with Vue 3, PrimeVue 4, Leaflet.js, Supabase (Auth, PostgreSQL, Realtime), and a Node.js scraper service.
+**Lead Prospector** is a general-purpose lead generation tool for finding local businesses by type and location. It supports two campaign types: local leads (<10mi for in-person visits) and remote leads (>25mi for document shipping). Users provide search queries (e.g., "plumber", "dentist") and a location to discover businesses. Built with Vue 3, PrimeVue 4, Leaflet.js, Supabase (Auth, PostgreSQL, Realtime), and a Node.js scraper service.
 
-**Current Version:** 1.0.0
+**Current Version:** 2.0.0
 **Status:** In development
 
 ---
@@ -20,7 +20,7 @@ npm workspaces monorepo with a hybrid backend: Supabase Edge Functions for short
 - `packages/frontend/src/main.ts` — Entry point: Vue 3 + Router + PrimeVue bootstrap
 - `packages/scraper/src/index.ts` — Entry point: Express server for job management
 - `packages/scraper/src/config.ts` — Zod-validated environment configuration
-- `packages/scraper/src/types.ts` — Shared TypeScript interfaces (Firm, Contact, ScrapeJob, etc.)
+- `packages/scraper/src/types.ts` — Shared TypeScript interfaces (Business, Contact, ScrapeJob, etc.)
 - `packages/frontend/src/lib/supabase.ts` — Supabase client singleton (anon key, respects RLS)
 - `packages/scraper/src/supabase.ts` — Supabase service-role client (bypasses RLS)
 - `packages/frontend/src/lib/database.types.ts` — Generated Supabase types (regenerate with `supabase gen types`)
@@ -51,9 +51,9 @@ npm workspaces monorepo with a hybrid backend: Supabase Edge Functions for short
 #### 1. Scraper Pipeline (3-Phase)
 The pipeline in `packages/scraper/src/pipeline/orchestrator.ts` runs three phases sequentially per job:
 
-1. **Discovery** — Google Places API (primary) or Google Maps scraping (fallback if no API key). Queries: "immigration lawyer", "immigration attorney". Haversine distance from search center categorizes firms: <10mi=local, 10–25mi=mid, >25mi=remote. Deduplicates by `google_place_id`.
-2. **Enrichment** — Website scraping (Cheerio) to find staff pages and extract LinkedIn URLs. Yelp API for ratings (if key available).
-3. **Contact Extraction** — Parses staff pages for names/titles/emails. Targets: paralegals, office managers, legal assistants, case managers. Excludes: attorneys, partners, associates. Seniority scoring: Senior Paralegal/Office Manager=3, Paralegal/Case Manager=2, Legal Assistant/Admin=1.
+1. **Discovery** — Google Places API (primary) or Google Maps scraping (fallback if no API key). Search queries are user-provided (required). Haversine distance from search center categorizes businesses: <10mi=local, 10–25mi=mid, >25mi=remote. Deduplicates by `google_place_id`.
+2. **Enrichment** — Website scraping (Cheerio) to find staff/team/about pages and extract LinkedIn URLs. Yelp API for ratings (if key available).
+3. **Contact Extraction** — Parses staff pages for names/titles/emails. Extracts all persons found without filtering by role. All contacts get `seniority_score: 0`. Confidence: "high" with email, "medium" without.
 
 **Constraints:** Only one job runs at a time (sequential FIFO queue in `job-queue.ts`). Pipeline checks `isCancelled()` between phases. Each phase updates the `scrape_jobs` table with progress counters and timestamped log lines.
 
@@ -74,13 +74,13 @@ Row-Level Security (RLS) enabled on all tables. Per-user isolation: `auth.uid() 
 Vue Router guards: `/login` and `/auth/callback` are public; all other routes redirect to `/login` if no session.
 
 #### 4. Realtime Job Progress
-Supabase Realtime subscription in `useRealtime.ts`. Subscribes to `UPDATE` events on `scrape_jobs` filtered by job ID. The scraper writes progress (firms_discovered, firms_enriched, total_contacts) to the DB, which pushes to the frontend via WebSocket.
+Supabase Realtime subscription in `useRealtime.ts`. Subscribes to `UPDATE` events on `scrape_jobs` filtered by job ID. The scraper writes progress (businesses_discovered, businesses_enriched, total_contacts) to the DB, which pushes to the frontend via WebSocket.
 
 #### 5. Frontend State Management
 Vue 3 Composition API composables — no Vuex/Pinia:
 - `useAuth()` — session, user, signInWithProvider(), signOut()
-- `useFirms()` — firm CRUD + filtering via Supabase client
-- `useContacts()` — contact reads for a firm
+- `useBusinesses()` — business CRUD + filtering via Supabase client
+- `useContacts()` — contact reads for a business
 - `useJobs()` — job CRUD + POST to scraper `/api/jobs/start`
 - `useRealtime()` — WebSocket subscription for job progress
 - `useExport()` — invokes `export-csv` edge function
@@ -106,7 +106,7 @@ Frontend (Vue) → Supabase Client (RLS) → PostgreSQL
 Frontend → POST /api/jobs/start → Scraper Express API
 Scraper (service_role) → PostgreSQL → Supabase Realtime → Frontend
 Frontend → Edge Function (export-csv) → CSV download
-Frontend → Edge Function (enrich-single) → single firm enrichment
+Frontend → Edge Function (enrich-single) → single business enrichment
 ```
 
 ---
@@ -163,18 +163,18 @@ Environment files / define sources:
 - **Gotchas:** OAuth provider env vars must be set before `supabase start` (restart required after changes). Realtime only enabled on `scrape_jobs` table. RLS policies use `(SELECT auth.uid())` pattern — queries without a valid JWT return empty results.
 
 ### Google Places API
-- **What:** Primary firm discovery source (Places API v1 text search)
+- **What:** Primary business discovery source (Places API v1 text search)
 - **Loaded via:** Direct HTTPS fetch to `https://places.googleapis.com/v1/places:searchText`
 - **Key env vars:** `GOOGLE_PLACES_API_KEY` (optional — falls back to scraping without it)
 - **Gotchas:** Max 20 results per request with pagination via `nextPageToken`. 2s pause required between pages. Rate limited to 10 req/min.
 
 ### Google Custom Search API
-- **What:** LinkedIn URL discovery for firms
+- **What:** LinkedIn URL discovery for businesses
 - **Key env vars:** Uses `GOOGLE_PLACES_API_KEY` (same key)
 - **Gotchas:** Rate limited to 5 req/min. Daily quota limits apply.
 
 ### Yelp Fusion API
-- **What:** Supplementary firm data (ratings, review counts)
+- **What:** Supplementary business data (ratings, review counts)
 - **Key env vars:** `YELP_API_KEY` (optional — enrichment skipped without it)
 - **Gotchas:** Rate limited to 50 req/min.
 
@@ -187,7 +187,7 @@ Environment files / define sources:
 3. **In-memory rate limiter** — Token buckets reset on restart; no persistent rate tracking
 4. **Single-process scraping** — Only one job runs at a time; no horizontal scaling
 5. **Google Maps scraper fragility** — Fallback scraping mode depends on Google's HTML structure which can change without notice
-6. **No pagination in frontend** — Dashboard loads all firms at once via Supabase client
+6. **No pagination in frontend** — Dashboard loads all businesses at once via Supabase client
 
 ---
 
@@ -215,7 +215,7 @@ Any function that sends data in response to frequent events must implement rate 
 Always use bounded string operations. This prevents silent overflow if format arguments change in the future.
 
 ### 8. Report errors, don't silently fail
-When input exceeds limits or operations fail, provide actionable error feedback to the caller. The scraper logs errors per-firm and updates `scrape_status` to `'failed'` with `scrape_error` details. Never silently truncate, drop, or ignore errors.
+When input exceeds limits or operations fail, provide actionable error feedback to the caller. The scraper logs errors per-business and updates `scrape_status` to `'failed'` with `scrape_error` details. Never silently truncate, drop, or ignore errors.
 
 ---
 
@@ -374,14 +374,14 @@ Version string appears in 3 files:
 | `.env.example` | Environment variable template |
 | `supabase/` | Database migrations, edge functions, local config |
 | `supabase/config.toml` | Local Supabase services (ports, auth providers, realtime) |
-| `supabase/migrations/` | 9 sequential SQL migrations (firms, contacts, scrape_jobs, api_cache, RLS, realtime) |
+| `supabase/migrations/` | 11 sequential SQL migrations (businesses, contacts, scrape_jobs, api_cache, RLS, realtime, search queries, rename) |
 | `supabase/seed.sql` | Database seed data |
 | `supabase/functions/_shared/` | Shared edge function utilities (CORS, client factories, types) |
-| `supabase/functions/export-csv/` | CSV export edge function (auth'd, best contact per firm) |
-| `supabase/functions/enrich-single/` | Single-firm enrichment edge function |
+| `supabase/functions/export-csv/` | CSV export edge function (auth'd, best contact per business) |
+| `supabase/functions/enrich-single/` | Single-business enrichment edge function |
 | `packages/frontend/` | Vue 3 + PrimeVue + Leaflet SPA |
-| `packages/frontend/src/composables/` | Vue 3 composition API state (useAuth, useFirms, useJobs, etc.) |
-| `packages/frontend/src/views/` | Page components (Login, Dashboard, FirmDetail, Jobs) |
+| `packages/frontend/src/composables/` | Vue 3 composition API state (useAuth, useBusinesses, useJobs, etc.) |
+| `packages/frontend/src/views/` | Page components (Login, Dashboard, BusinessDetail, Jobs) |
 | `packages/frontend/src/components/` | Reusable UI (AppLayout, LeadsTable, LeadsMap, SearchControls, etc.) |
 | `packages/scraper/` | Node.js Express scraper service |
 | `packages/scraper/src/pipeline/` | Job orchestrator, queue, rate limiter |
@@ -447,11 +447,11 @@ No test framework is configured yet. See `docs/CLAUDE.md/testing-checklist.md` f
 1. `supabase start` → all services running
 2. `npm run dev` → scraper on :3737, frontend on :5173
 3. OAuth login works → session persists
-4. Campaign search creates job → scraper discovers firms
+4. Campaign search creates job → scraper discovers businesses
 5. Realtime progress updates in UI
-6. Table + map show firms with distance/status
-7. Firm detail shows contacts
-8. CSV export downloads
+6. Table + map show businesses with distance/status
+7. Business detail shows contacts
+8. CSV export downloads with "Business" column header
 9. Multi-user RLS isolation works
 
 ---

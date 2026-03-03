@@ -2,10 +2,10 @@ export type Campaign = 'local' | 'mid' | 'remote';
 export type ScrapeStatus = 'discovered' | 'enriching' | 'enriched' | 'failed';
 export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
 export type ScrapeMode = 'api' | 'scrape';
-export type ContactSource = 'website' | 'google_search' | 'state_bar';
+export type ContactSource = 'website' | 'google_search' | 'directory';
 export type Confidence = 'high' | 'medium' | 'low';
 
-export interface Firm {
+export interface Business {
   id: string;
   user_id: string;
   google_place_id: string | null;
@@ -36,7 +36,7 @@ export interface Firm {
 export interface Contact {
   id: string;
   user_id: string;
-  firm_id: string;
+  business_id: string;
   name: string;
   title: string | null;
   email: string | null;
@@ -57,11 +57,12 @@ export interface ScrapeJob {
   search_location: string;
   search_lat: number;
   search_lng: number;
+  search_queries: string[];
   min_radius_miles: number;
   max_radius_miles: number;
-  firms_discovered: number;
-  firms_enriched: number;
-  firms_failed: number;
+  businesses_discovered: number;
+  businesses_enriched: number;
+  businesses_failed: number;
   total_contacts: number;
   error: string | null;
   log: string;

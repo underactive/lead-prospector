@@ -3,10 +3,10 @@ import { useRouter } from 'vue-router';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Tag from 'primevue/tag';
-import type { Firm } from '@/lib/database.types';
+import type { Business } from '@/lib/database.types';
 
 defineProps<{
-  firms: Firm[];
+  businesses: Business[];
   loading: boolean;
 }>();
 
@@ -36,14 +36,14 @@ function campaignSeverity(campaign: string) {
   }
 }
 
-function onRowClick(event: { data: Firm }) {
-  router.push(`/firms/${event.data.id}`);
+function onRowClick(event: { data: Business }) {
+  router.push(`/businesses/${event.data.id}`);
 }
 </script>
 
 <template>
   <DataTable
-    :value="firms"
+    :value="businesses"
     :loading="loading"
     paginator
     :rows="50"
@@ -111,7 +111,7 @@ function onRowClick(event: { data: Firm }) {
       </template>
     </Column>
     <template #empty>
-      <div class="empty-state">No firms found. Run a search to discover leads.</div>
+      <div class="empty-state">No businesses found. Run a search to discover leads.</div>
     </template>
   </DataTable>
 </template>

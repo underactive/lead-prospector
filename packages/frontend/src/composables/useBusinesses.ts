@@ -1,13 +1,13 @@
 import { ref } from 'vue';
 import { supabase } from '@/lib/supabase';
-import type { Firm, Campaign, ScrapeStatus } from '@/lib/database.types';
+import type { Business, Campaign, ScrapeStatus } from '@/lib/database.types';
 
-export function useFirms() {
-  const firms = ref<Firm[]>([]);
+export function useBusinesses() {
+  const businesses = ref<Business[]>([]);
   const loading = ref(false);
   const error = ref<string | null>(null);
 
-  async function fetchFirms(filters?: {
+  async function fetchBusinesses(filters?: {
     campaign?: Campaign;
     status?: ScrapeStatus;
     minDistance?: number;
@@ -17,7 +17,7 @@ export function useFirms() {
     error.value = null;
     try {
       let query = supabase
-        .from('firms')
+        .from('businesses')
         .select('*')
         .order('distance_miles', { ascending: true });
 
@@ -36,30 +36,30 @@ export function useFirms() {
 
       const { data, error: err } = await query;
       if (err) throw err;
-      firms.value = data as Firm[];
+      businesses.value = data as Business[];
     } catch (e) {
-      error.value = e instanceof Error ? e.message : 'Failed to fetch firms';
+      error.value = e instanceof Error ? e.message : 'Failed to fetch businesses';
     } finally {
       loading.value = false;
     }
   }
 
-  async function getFirm(id: string): Promise<Firm | null> {
+  async function getBusiness(id: string): Promise<Business | null> {
     const { data, error: err } = await supabase
-      .from('firms')
+      .from('businesses')
       .select('*')
       .eq('id', id)
       .single();
 
     if (err) throw err;
-    return data as Firm;
+    return data as Business;
   }
 
-  async function deleteFirm(id: string) {
-    const { error: err } = await supabase.from('firms').delete().eq('id', id);
+  async function deleteBusiness(id: string) {
+    const { error: err } = await supabase.from('businesses').delete().eq('id', id);
     if (err) throw err;
-    firms.value = firms.value.filter((f) => f.id !== id);
+    businesses.value = businesses.value.filter((b) => b.id !== id);
   }
 
-  return { firms, loading, error, fetchFirms, getFirm, deleteFirm };
+  return { businesses, loading, error, fetchBusinesses, getBusiness, deleteBusiness };
 }

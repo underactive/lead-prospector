@@ -1,4 +1,4 @@
-export interface Firm {
+export interface Business {
   id: string;
   user_id: string;
   google_place_id: string | null;
@@ -29,20 +29,20 @@ export interface Firm {
 export interface Contact {
   id: string;
   user_id: string;
-  firm_id: string;
+  business_id: string;
   name: string;
   title: string | null;
   email: string | null;
   phone: string | null;
   linkedin_url: string | null;
-  source: 'website' | 'google_search' | 'state_bar' | null;
+  source: 'website' | 'google_search' | 'directory' | null;
   confidence: 'high' | 'medium' | 'low';
   seniority_score: number;
   created_at: string;
 }
 
 export interface CsvRow {
-  'Firm Name': string;
+  'Business Name': string;
   Address: string;
   City: string;
   State: string;

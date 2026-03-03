@@ -3,26 +3,26 @@ import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import Button from 'primevue/button';
 import Tag from 'primevue/tag';
-import { useFirms } from '@/composables/useFirms';
+import { useBusinesses } from '@/composables/useBusinesses';
 import { useContacts } from '@/composables/useContacts';
 import ContactsList from '@/components/ContactsList.vue';
-import type { Firm } from '@/lib/database.types';
+import type { Business } from '@/lib/database.types';
 
 const route = useRoute();
 const router = useRouter();
-const { getFirm, deleteFirm } = useFirms();
-const { contacts, loading: contactsLoading, fetchContactsForFirm } = useContacts();
+const { getBusiness, deleteBusiness } = useBusinesses();
+const { contacts, loading: contactsLoading, fetchContactsForBusiness } = useContacts();
 
-const firm = ref<Firm | null>(null);
+const business = ref<Business | null>(null);
 const loading = ref(true);
 const enriching = ref(false);
 
 onMounted(async () => {
   const id = route.params.id as string;
   try {
-    firm.value = await getFirm(id);
-    if (firm.value) {
-      await fetchContactsForFirm(firm.value.id);
+    business.value = await getBusiness(id);
+    if (business.value) {
+      await fetchContactsForBusiness(business.value.id);
     }
   } finally {
     loading.value = false;
@@ -30,7 +30,7 @@ onMounted(async () => {
 });
 
 async function handleEnrich() {
-  if (!firm.value) return;
+  if (!business.value) return;
   enriching.value = true;
   try {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -46,13 +46,13 @@ async function handleEnrich() {
         Authorization: `Bearer ${session.access_token}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ firmId: firm.value.id }),
+      body: JSON.stringify({ businessId: business.value.id }),
     });
 
     if (response.ok) {
-      firm.value = await getFirm(firm.value!.id);
-      if (firm.value) {
-        await fetchContactsForFirm(firm.value.id);
+      business.value = await getBusiness(business.value!.id);
+      if (business.value) {
+        await fetchContactsForBusiness(business.value.id);
       }
     }
   } finally {
@@ -61,8 +61,8 @@ async function handleEnrich() {
 }
 
 async function handleDelete() {
-  if (!firm.value) return;
-  await deleteFirm(firm.value.id);
+  if (!business.value) return;
+  await deleteBusiness(business.value.id);
   router.push('/');
 }
 
@@ -85,12 +85,12 @@ function statusSeverity(status: string) {
     <i class="pi pi-spin pi-spinner" style="font-size: 1.5rem"></i>
   </div>
 
-  <div v-else-if="!firm" class="not-found">
-    <p>Firm not found.</p>
+  <div v-else-if="!business" class="not-found">
+    <p>Business not found.</p>
     <Button label="Back to Dashboard" icon="pi pi-arrow-left" @click="router.push('/')" />
   </div>
 
-  <div v-else class="firm-detail">
+  <div v-else class="business-detail">
     <div class="detail-header">
       <Button
         icon="pi pi-arrow-left"
@@ -100,12 +100,12 @@ function statusSeverity(status: string) {
         @click="router.push('/')"
       />
       <div class="header-info">
-        <h1>{{ firm.name }}</h1>
+        <h1>{{ business.name }}</h1>
         <div class="header-meta">
-          <Tag :value="firm.campaign" :severity="firm.campaign === 'local' ? 'success' : 'info'" />
-          <Tag :value="firm.scrape_status" :severity="statusSeverity(firm.scrape_status)" />
-          <span v-if="firm.distance_miles != null" class="distance">
-            {{ firm.distance_miles.toFixed(1) }} mi from Austin
+          <Tag :value="business.campaign" :severity="business.campaign === 'local' ? 'success' : 'info'" />
+          <Tag :value="business.scrape_status" :severity="statusSeverity(business.scrape_status)" />
+          <span v-if="business.distance_miles != null" class="distance">
+            {{ business.distance_miles.toFixed(1) }} mi away
           </span>
         </div>
       </div>
@@ -131,29 +131,29 @@ function statusSeverity(status: string) {
     <div class="detail-grid">
       <div class="info-card">
         <h3>Details</h3>
-        <div class="info-row" v-if="firm.address">
+        <div class="info-row" v-if="business.address">
           <span class="info-label">Address</span>
-          <span>{{ firm.address }}, {{ firm.city }}, {{ firm.state }} {{ firm.zip }}</span>
+          <span>{{ business.address }}, {{ business.city }}, {{ business.state }} {{ business.zip }}</span>
         </div>
-        <div class="info-row" v-if="firm.phone">
+        <div class="info-row" v-if="business.phone">
           <span class="info-label">Phone</span>
-          <span>{{ firm.phone }}</span>
+          <span>{{ business.phone }}</span>
         </div>
-        <div class="info-row" v-if="firm.website">
+        <div class="info-row" v-if="business.website">
           <span class="info-label">Website</span>
-          <a :href="firm.website" target="_blank" rel="noopener noreferrer">{{ firm.website }}</a>
+          <a :href="business.website" target="_blank" rel="noopener noreferrer">{{ business.website }}</a>
         </div>
-        <div class="info-row" v-if="firm.linkedin_url">
+        <div class="info-row" v-if="business.linkedin_url">
           <span class="info-label">LinkedIn</span>
-          <a :href="firm.linkedin_url" target="_blank" rel="noopener noreferrer">{{ firm.linkedin_url }}</a>
+          <a :href="business.linkedin_url" target="_blank" rel="noopener noreferrer">{{ business.linkedin_url }}</a>
         </div>
-        <div class="info-row" v-if="firm.google_maps_url">
+        <div class="info-row" v-if="business.google_maps_url">
           <span class="info-label">Google Maps</span>
-          <a :href="firm.google_maps_url" target="_blank" rel="noopener noreferrer">View on Maps</a>
+          <a :href="business.google_maps_url" target="_blank" rel="noopener noreferrer">View on Maps</a>
         </div>
-        <div class="info-row" v-if="firm.rating">
+        <div class="info-row" v-if="business.rating">
           <span class="info-label">Rating</span>
-          <span>{{ firm.rating }} ({{ firm.review_count }} reviews)</span>
+          <span>{{ business.rating }} ({{ business.review_count }} reviews)</span>
         </div>
       </div>
 
@@ -163,8 +163,8 @@ function statusSeverity(status: string) {
       </div>
     </div>
 
-    <div v-if="firm.scrape_error" class="error-banner">
-      <strong>Scrape Error:</strong> {{ firm.scrape_error }}
+    <div v-if="business.scrape_error" class="error-banner">
+      <strong>Scrape Error:</strong> {{ business.scrape_error }}
     </div>
   </div>
 </template>
@@ -181,7 +181,7 @@ function statusSeverity(status: string) {
   color: #64748b;
 }
 
-.firm-detail {
+.business-detail {
   display: flex;
   flex-direction: column;
   gap: 1.25rem;

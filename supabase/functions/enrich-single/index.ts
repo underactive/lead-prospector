@@ -1,24 +1,6 @@
 import { corsHeaders } from '../_shared/cors.ts';
 import { createServiceClient, createUserClient } from '../_shared/supabase-client.ts';
-import type { Firm } from '../_shared/types.ts';
-
-/** Titles we want to capture as contacts. */
-const TARGET_TITLES_RE =
-  /\b(senior\s+paralegal|paralegal|office\s+manager|legal\s+assistant)\b/i;
-
-/** Titles we explicitly exclude — attorneys and lawyers. */
-const EXCLUDE_TITLES_RE =
-  /\b(attorney|partner|associate|j\.?d\.?|esq\.?|lawyer|counsel|of\s+counsel)\b/i;
-
-/** Seniority scoring map. */
-function seniorityScore(title: string): number {
-  const t = title.toLowerCase();
-  if (/senior\s+paralegal/.test(t)) return 3;
-  if (/office\s+manager/.test(t)) return 3;
-  if (/\bparalegal\b/.test(t)) return 2;
-  if (/legal\s+assistant/.test(t)) return 1;
-  return 0;
-}
+import type { Business } from '../_shared/types.ts';
 
 /** Extract email addresses from a block of text / HTML. */
 function extractEmails(html: string): string[] {
@@ -54,7 +36,7 @@ function extractEmails(html: string): string[] {
 /** Find links to team/staff/about pages. */
 function findTeamLinks(html: string, baseUrl: string): string[] {
   const linkRe = /<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-  const teamKeywords = /\b(team|staff|people|about|personnel|our-team|attorneys|professionals)\b/i;
+  const teamKeywords = /\b(team|staff|people|about|personnel|our-team|directory|professionals)\b/i;
   const links: string[] = [];
   const seen = new Set<string>();
 
@@ -80,7 +62,7 @@ function findTeamLinks(html: string, baseUrl: string): string[] {
 
 interface ExtractedContact {
   name: string;
-  title: string;
+  title: string | null;
   email: string | null;
 }
 
@@ -89,7 +71,7 @@ interface ExtractedContact {
  *   Name - Title
  *   Name, Title
  *   <h2>Name</h2><p>Title</p>
- * Then matches nearby emails.
+ * Extracts all persons found without filtering by role.
  */
 function extractContacts(html: string): ExtractedContact[] {
   const contacts: ExtractedContact[] = [];
@@ -98,29 +80,24 @@ function extractContacts(html: string): ExtractedContact[] {
   // Strip HTML tags for text-based extraction
   const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
 
-  // Pattern: "Name - Title" or "Name, Title" where Title matches our targets
+  // Pattern: "Name - Title" or "Name, Title" where Title is a capitalized phrase
   const nameAndTitleRe =
-    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*[-,|]\s*((?:Senior\s+)?Paralegal|Office\s+Manager|Legal\s+Assistant)/gi;
+    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*[-,|]\s*([A-Z][a-zA-Z\s]{2,40}?)(?=[,.|<\n]|$)/g;
 
   let m: RegExpExecArray | null;
+  const seenNames = new Set<string>();
+
   while ((m = nameAndTitleRe.exec(text)) !== null) {
     const name = m[1].trim();
     const title = m[2].trim();
-
-    // Skip if the surrounding context reveals this is really an attorney
-    const contextStart = Math.max(0, m.index - 100);
-    const contextEnd = Math.min(text.length, m.index + m[0].length + 100);
-    const context = text.slice(contextStart, contextEnd);
-    if (EXCLUDE_TITLES_RE.test(context.replace(TARGET_TITLES_RE, ''))) {
-      continue;
-    }
+    if (seenNames.has(name.toLowerCase())) continue;
+    seenNames.add(name.toLowerCase());
 
     // Try to find an email near this person's name
     let bestEmail: string | null = null;
     const nameParts = name.toLowerCase().split(/\s+/);
     for (const email of allEmails) {
       const emailLower = email.toLowerCase();
-      // Check if the email contains any part of the person's name
       if (nameParts.some((part) => part.length > 2 && emailLower.includes(part))) {
         bestEmail = email;
         break;
@@ -132,14 +109,14 @@ function extractContacts(html: string): ExtractedContact[] {
 
   // Additional pattern: structured HTML like <h3>Name</h3> ... <span>Title</span>
   const structuredRe =
-    /<(?:h[2-4]|strong|b)[^>]*>\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*<\/(?:h[2-4]|strong|b)>[\s\S]{0,200}?((?:Senior\s+)?Paralegal|Office\s+Manager|Legal\s+Assistant)/gi;
+    /<(?:h[2-4]|strong|b)[^>]*>\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*<\/(?:h[2-4]|strong|b)>[\s\S]{0,200}?<(?:span|p|div)[^>]*>\s*([A-Z][a-zA-Z\s]{2,40}?)\s*<\/(?:span|p|div)>/gi;
 
   while ((m = structuredRe.exec(html)) !== null) {
     const name = m[1].trim();
     const title = m[2].trim();
 
-    // Avoid duplicates
-    if (contacts.some((c) => c.name === name)) continue;
+    if (seenNames.has(name.toLowerCase())) continue;
+    seenNames.add(name.toLowerCase());
 
     let bestEmail: string | null = null;
     const nameParts = name.toLowerCase().split(/\s+/);
@@ -164,7 +141,7 @@ async function fetchPage(url: string, signal: AbortSignal): Promise<string | nul
       signal,
       headers: {
         'User-Agent':
-          'Mozilla/5.0 (compatible; LeadProspector/1.0; +https://example.com/bot)',
+          'Mozilla/5.0 (compatible; LeadProspector/2.0; +https://example.com/bot)',
         Accept: 'text/html,application/xhtml+xml',
       },
       redirect: 'follow',
@@ -220,33 +197,33 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { firmId } = (await req.json()) as { firmId: string };
-    if (!firmId) {
-      return new Response(JSON.stringify({ error: 'firmId is required' }), {
+    const { businessId } = (await req.json()) as { businessId: string };
+    if (!businessId) {
+      return new Response(JSON.stringify({ error: 'businessId is required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // ---------- verify firm ownership (via RLS) ----------
-    const { data: firm, error: firmError } = await userClient
-      .from('firms')
+    // ---------- verify business ownership (via RLS) ----------
+    const { data: business, error: businessError } = await userClient
+      .from('businesses')
       .select('*')
-      .eq('id', firmId)
+      .eq('id', businessId)
       .single();
 
-    if (firmError || !firm) {
-      return new Response(JSON.stringify({ error: 'Firm not found or access denied' }), {
+    if (businessError || !business) {
+      return new Response(JSON.stringify({ error: 'Business not found or access denied' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const typedFirm = firm as Firm;
+    const typedBusiness = business as Business;
 
-    if (!typedFirm.website) {
+    if (!typedBusiness.website) {
       return new Response(
-        JSON.stringify({ error: 'Firm has no website to enrich from' }),
+        JSON.stringify({ error: 'Business has no website to enrich from' }),
         {
           status: 422,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -258,12 +235,12 @@ Deno.serve(async (req: Request) => {
     const serviceClient = createServiceClient();
 
     await serviceClient
-      .from('firms')
+      .from('businesses')
       .update({ scrape_status: 'enriching' })
-      .eq('id', firmId);
+      .eq('id', businessId);
 
     // ---------- fetch homepage ----------
-    let baseUrl = typedFirm.website;
+    let baseUrl = typedBusiness.website;
     if (!/^https?:\/\//i.test(baseUrl)) {
       baseUrl = `https://${baseUrl}`;
     }
@@ -271,12 +248,12 @@ Deno.serve(async (req: Request) => {
     const homepageHtml = await fetchPage(baseUrl, controller.signal);
     if (!homepageHtml) {
       await serviceClient
-        .from('firms')
+        .from('businesses')
         .update({ scrape_status: 'failed', scrape_error: 'Failed to fetch homepage' })
-        .eq('id', firmId);
+        .eq('id', businessId);
 
       return new Response(
-        JSON.stringify({ error: 'Failed to fetch firm website' }),
+        JSON.stringify({ error: 'Failed to fetch business website' }),
         {
           status: 502,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -314,23 +291,21 @@ Deno.serve(async (req: Request) => {
     }
 
     // ---------- upsert contacts ----------
-    const upsertedContacts: Array<{ name: string; title: string; email: string | null }> = [];
+    const upsertedContacts: Array<{ name: string; title: string | null; email: string | null }> = [];
 
     for (const contact of allContacts) {
-      const score = seniorityScore(contact.title);
-
       const { error: upsertError } = await serviceClient.from('contacts').upsert(
         {
           user_id: user.id,
-          firm_id: firmId,
+          business_id: businessId,
           name: contact.name,
           title: contact.title,
           email: contact.email,
           source: 'website' as const,
           confidence: contact.email ? ('high' as const) : ('medium' as const),
-          seniority_score: score,
+          seniority_score: 0,
         },
-        { onConflict: 'firm_id,name', ignoreDuplicates: false },
+        { onConflict: 'business_id,name', ignoreDuplicates: false },
       );
 
       if (!upsertError) {
@@ -342,22 +317,22 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    // ---------- update firm status ----------
+    // ---------- update business status ----------
     await serviceClient
-      .from('firms')
+      .from('businesses')
       .update({
         scrape_status: 'enriched',
         enriched_at: new Date().toISOString(),
         scrape_error: null,
       })
-      .eq('id', firmId);
+      .eq('id', businessId);
 
     clearTimeout(timeout);
 
     return new Response(
       JSON.stringify({
         success: true,
-        firmId,
+        businessId,
         pagesScraped: pagesToParse.length,
         contactsFound: allContacts.length,
         contactsUpserted: upsertedContacts.length,
@@ -377,15 +352,15 @@ Deno.serve(async (req: Request) => {
 
     console.error('enrich-single error:', err);
 
-    // Best-effort: mark firm as failed
+    // Best-effort: mark business as failed
     try {
-      const { firmId } = (await req.clone().json().catch(() => ({}))) as { firmId?: string };
-      if (firmId) {
+      const { businessId } = (await req.clone().json().catch(() => ({}))) as { businessId?: string };
+      if (businessId) {
         const serviceClient = createServiceClient();
         await serviceClient
-          .from('firms')
+          .from('businesses')
           .update({ scrape_status: 'failed', scrape_error: message })
-          .eq('id', firmId);
+          .eq('id', businessId);
       }
     } catch {
       // ignore cleanup errors

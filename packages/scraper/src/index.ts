@@ -40,6 +40,16 @@ const jobStartSchema = z.object({
   searchLocation: z.string().default("Austin, TX"),
   searchLat: z.coerce.number().default(config.DEFAULT_LAT),
   searchLng: z.coerce.number().default(config.DEFAULT_LNG),
+  searchQueries: z
+    .array(
+      z.string()
+        .trim()
+        .min(2, "Query must be at least 2 characters")
+        .max(100, "Query must be at most 100 characters")
+    )
+    .min(1, "At least one search query is required")
+    .max(5, "At most 5 search queries allowed")
+    ,
 });
 
 app.post("/api/jobs/start", async (req, res) => {
@@ -62,7 +72,7 @@ app.post("/api/jobs/start", async (req, res) => {
   }
 
   console.log(
-    `[scraper] Job received — id: ${payload.jobId}, campaign: ${payload.campaign}, mode: ${payload.mode}, location: ${payload.searchLocation} (${payload.searchLat}, ${payload.searchLng})`
+    `[scraper] Job received — id: ${payload.jobId}, campaign: ${payload.campaign}, mode: ${payload.mode}, location: ${payload.searchLocation} (${payload.searchLat}, ${payload.searchLng}), queries: [${payload.searchQueries.join(", ")}]`
   );
 
   try {

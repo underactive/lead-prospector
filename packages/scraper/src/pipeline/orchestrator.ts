@@ -6,7 +6,7 @@ import { discoverViaMapsScraping } from "../sources/google-maps-scraper.js";
 import { scrapeWebsite } from "../sources/website-scraper.js";
 import { searchYelp } from "../sources/yelp.js";
 import { jobQueue } from "./job-queue.js";
-import type { DiscoveredFirm, ExtractedContact, JobStartPayload } from "../types.js";
+import type { DiscoveredBusiness, ExtractedContact, JobStartPayload } from "../types.js";
 
 type LogFn = (msg: string) => void;
 
@@ -28,151 +28,168 @@ async function updateJob(
 }
 
 /**
- * Update a firm record in Supabase.
+ * Update a business record in Supabase.
  */
-async function updateFirm(
-  firmId: string,
+async function updateBusiness(
+  businessId: string,
   updates: Record<string, unknown>
 ): Promise<void> {
   const { error } = await supabase
-    .from("firms")
+    .from("businesses")
     .update({ ...updates, updated_at: new Date().toISOString() })
-    .eq("id", firmId);
+    .eq("id", businessId);
 
   if (error) {
-    console.error(`[orchestrator] Failed to update firm ${firmId}:`, error.message);
+    console.error(`[orchestrator] Failed to update business ${businessId}:`, error.message);
   }
 }
 
 // ─── Phase 1: Discovery ────────────────────────────────────────────────
 
-async function discoverFirms(
+async function discoverBusinesses(
   payload: JobStartPayload,
   centerLat: number,
   centerLng: number,
   log: LogFn
-): Promise<DiscoveredFirm[]> {
+): Promise<DiscoveredBusiness[]> {
   log(`Phase 1 — Discovery (mode: ${payload.mode}, location: ${payload.searchLocation})`);
 
-  let firms: DiscoveredFirm[];
+  let businesses: DiscoveredBusiness[];
+
+  const searchQueries = payload.searchQueries;
+  log(`Search queries: [${searchQueries.join(", ")}]`);
 
   if (payload.mode === "api" && config.GOOGLE_PLACES_API_KEY) {
     const radiusMeters = payload.campaign === "local" ? 16000 : 50000;
     log(`Querying Google Places API (radius: ${radiusMeters}m)`);
-    firms = await discoverViaPlacesAPI(centerLat, centerLng, radiusMeters);
+    businesses = await discoverViaPlacesAPI(centerLat, centerLng, radiusMeters, searchQueries);
   } else {
-    const query = `immigration lawyer near ${payload.searchLocation}`;
-    log(`Scraping Google Maps: "${query}"`);
-    firms = await discoverViaMapsScraping(query, centerLat, centerLng);
+    const allScrapedBusinesses: DiscoveredBusiness[] = [];
+    const seenNames = new Set<string>();
 
-    if (firms.length === 0 && config.GOOGLE_PLACES_API_KEY) {
+    for (const query of searchQueries) {
+      const fullQuery = `${query} near ${payload.searchLocation}`;
+      log(`Scraping Google Maps: "${fullQuery}"`);
+      const results = await discoverViaMapsScraping(fullQuery, centerLat, centerLng);
+      for (const business of results) {
+        const key = business.name.toLowerCase();
+        if (!seenNames.has(key)) {
+          seenNames.add(key);
+          allScrapedBusinesses.push(business);
+        }
+      }
+    }
+
+    businesses = allScrapedBusinesses;
+
+    if (businesses.length === 0 && config.GOOGLE_PLACES_API_KEY) {
       log(`Scraping returned 0 results — falling back to Google Places API`);
       const radiusMeters = payload.campaign === "local" ? 16000 : 50000;
-      firms = await discoverViaPlacesAPI(centerLat, centerLng, radiusMeters);
+      businesses = await discoverViaPlacesAPI(centerLat, centerLng, radiusMeters, searchQueries);
     }
   }
 
   // Calculate distances and filter by campaign
-  const firmsWithDistance = firms.map((firm) => {
+  const businessesWithDistance = businesses.map((business) => {
     const distance =
-      firm.lat != null && firm.lng != null
-        ? haversineDistance(centerLat, centerLng, firm.lat, firm.lng)
+      business.lat != null && business.lng != null
+        ? haversineDistance(centerLat, centerLng, business.lat, business.lng)
         : null;
     const campaign = distance != null ? categorizeCampaign(distance) : null;
-    return { ...firm, distance, campaign };
+    return { ...business, distance, campaign };
   });
 
-  const filtered = firmsWithDistance.filter((f) => {
-    if (f.distance == null) return true;
-    if (payload.campaign === "local") return f.distance < 10;
-    if (payload.campaign === "remote") return f.distance > 25;
+  const filtered = businessesWithDistance.filter((b) => {
+    if (b.distance == null) return true;
+    if (payload.campaign === "local") return b.distance < 10;
+    if (payload.campaign === "remote") return b.distance > 25;
     return true;
   });
 
-  log(`Discovered ${firms.length} firms, ${filtered.length} match campaign "${payload.campaign}"`);
+  log(`Discovered ${businesses.length} businesses, ${filtered.length} match campaign "${payload.campaign}"`);
 
   return filtered;
 }
 
 /**
- * Upsert discovered firms into Supabase and return the inserted/updated IDs.
+ * Upsert discovered businesses into Supabase and return the inserted/updated IDs.
  */
-async function upsertFirms(
+async function upsertBusinesses(
   userId: string,
   jobId: string,
-  firms: (DiscoveredFirm & { distance: number | null; campaign: string | null })[],
+  businesses: (DiscoveredBusiness & { distance: number | null; campaign: string | null })[],
   log: LogFn
-): Promise<{ id: string; firm: DiscoveredFirm & { distance: number | null } }[]> {
-  const results: { id: string; firm: DiscoveredFirm & { distance: number | null } }[] = [];
+): Promise<{ id: string; business: DiscoveredBusiness & { distance: number | null } }[]> {
+  const results: { id: string; business: DiscoveredBusiness & { distance: number | null } }[] = [];
 
-  for (const firm of firms) {
+  for (const business of businesses) {
     const row = {
       user_id: userId,
-      google_place_id: firm.place_id,
-      name: firm.name,
-      address: firm.address,
-      phone: firm.phone,
-      website: firm.website,
-      google_maps_url: firm.google_maps_url,
-      latitude: firm.lat,
-      longitude: firm.lng,
-      distance_miles: firm.distance != null ? Math.round(firm.distance * 100) / 100 : null,
-      rating: firm.rating,
-      review_count: firm.review_count,
-      campaign: firm.campaign,
+      google_place_id: business.place_id,
+      name: business.name,
+      address: business.address,
+      phone: business.phone,
+      website: business.website,
+      google_maps_url: business.google_maps_url,
+      latitude: business.lat,
+      longitude: business.lng,
+      distance_miles: business.distance != null ? Math.round(business.distance * 100) / 100 : null,
+      rating: business.rating,
+      review_count: business.review_count,
+      campaign: business.campaign,
       scrape_status: "discovered",
       job_id: jobId,
     };
 
     let result;
-    if (firm.place_id) {
+    if (business.place_id) {
       result = await supabase
-        .from("firms")
+        .from("businesses")
         .upsert(row, { onConflict: "user_id,google_place_id" })
         .select("id")
         .single();
     } else {
       result = await supabase
-        .from("firms")
+        .from("businesses")
         .insert(row)
         .select("id")
         .single();
     }
 
     if (result.error) {
-      log(`✗ Failed to upsert "${firm.name}": ${result.error.message}`);
+      log(`✗ Failed to upsert "${business.name}": ${result.error.message}`);
       continue;
     }
 
     if (result.data) {
-      results.push({ id: result.data.id, firm });
+      results.push({ id: result.data.id, business });
     }
   }
 
-  log(`Stored ${results.length} firms in database`);
+  log(`Stored ${results.length} businesses in database`);
   return results;
 }
 
 // ─── Phase 2: Enrichment ───────────────────────────────────────────────
 
-async function enrichFirm(
-  firmId: string,
-  firm: DiscoveredFirm,
+async function enrichBusiness(
+  businessId: string,
+  business: DiscoveredBusiness,
   jobId: string,
   searchLocation: string,
   log: LogFn
 ): Promise<ExtractedContact[]> {
-  await updateFirm(firmId, { scrape_status: "enriching" });
+  await updateBusiness(businessId, { scrape_status: "enriching" });
 
   const enrichmentData: Record<string, unknown> = {};
   let websiteContacts: ExtractedContact[] = [];
 
   try {
     // Scrape website for staff/contacts + LinkedIn URL
-    if (firm.website) {
-      log(`  → Scraping website: ${firm.website}`);
+    if (business.website) {
+      log(`  → Scraping website: ${business.website}`);
       try {
-        const result = await scrapeWebsite(firm.website);
+        const result = await scrapeWebsite(business.website);
         websiteContacts = result.contacts;
         if (result.staffPageUrl) {
           log(`  ← Staff page: ${result.staffPageUrl}`);
@@ -193,7 +210,7 @@ async function enrichFirm(
     if (config.YELP_API_KEY) {
       log(`  → Searching Yelp`);
       try {
-        const yelpData = await searchYelp(firm.name, searchLocation);
+        const yelpData = await searchYelp(business.name, searchLocation);
         if (yelpData.yelpUrl) {
           enrichmentData.yelp_url = yelpData.yelpUrl;
           log(`  ← Yelp: ${yelpData.yelpUrl}`);
@@ -211,7 +228,7 @@ async function enrichFirm(
       }
     }
 
-    await updateFirm(firmId, {
+    await updateBusiness(businessId, {
       ...enrichmentData,
       scrape_status: "enriched",
       enriched_at: new Date().toISOString(),
@@ -220,7 +237,7 @@ async function enrichFirm(
     return websiteContacts;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    await updateFirm(firmId, {
+    await updateBusiness(businessId, {
       scrape_status: "failed",
       scrape_error: message,
     });
@@ -231,7 +248,7 @@ async function enrichFirm(
 // ─── Phase 3: Contact Extraction ───────────────────────────────────────
 
 async function insertContacts(
-  firmId: string,
+  businessId: string,
   userId: string,
   contacts: ExtractedContact[]
 ): Promise<number> {
@@ -241,7 +258,7 @@ async function insertContacts(
 
   for (const contact of contacts) {
     const { error } = await supabase.from("contacts").insert({
-      firm_id: firmId,
+      business_id: businessId,
       user_id: userId,
       name: contact.name,
       title: contact.title,
@@ -271,7 +288,7 @@ async function insertContacts(
 /**
  * Run the full 3-phase scraping pipeline for a job.
  *
- * Phase 1: Discovery — find immigration law firms
+ * Phase 1: Discovery — find businesses via search queries
  * Phase 2: Enrichment — scrape websites, LinkedIn, Yelp
  * Phase 3: Contact extraction — insert discovered contacts
  */
@@ -299,6 +316,7 @@ export async function runPipeline(payload: JobStartPayload): Promise<void> {
   log(`Job: ${jobId}`);
   log(`Campaign: ${campaign} | Mode: ${mode}`);
   log(`Location: ${payload.searchLocation} (${centerLat}, ${centerLng})`);
+  log(`Queries: [${payload.searchQueries.join(", ")}]`);
 
   try {
     await flushJob({
@@ -308,7 +326,7 @@ export async function runPipeline(payload: JobStartPayload): Promise<void> {
 
     // ── Phase 1: Discovery ──────────────────────────────────────────
 
-    const discovered = await discoverFirms(payload, centerLat, centerLng, log);
+    const discovered = await discoverBusinesses(payload, centerLat, centerLng, log);
 
     if (jobQueue.isCancelled(jobId)) {
       log("Job cancelled");
@@ -316,55 +334,55 @@ export async function runPipeline(payload: JobStartPayload): Promise<void> {
       return;
     }
 
-    const upsertedFirms = await upsertFirms(
+    const upsertedBusinesses = await upsertBusinesses(
       userId,
       jobId,
-      discovered as (DiscoveredFirm & { distance: number | null; campaign: string | null })[],
+      discovered as (DiscoveredBusiness & { distance: number | null; campaign: string | null })[],
       log
     );
 
-    await flushJob({ firms_discovered: upsertedFirms.length });
+    await flushJob({ businesses_discovered: upsertedBusinesses.length });
 
-    log(`Phase 1 complete — ${upsertedFirms.length} firms stored`);
+    log(`Phase 1 complete — ${upsertedBusinesses.length} businesses stored`);
 
     // ── Phase 2: Enrichment ─────────────────────────────────────────
 
-    let firmsEnriched = 0;
-    let firmsFailed = 0;
+    let businessesEnriched = 0;
+    let businessesFailed = 0;
     let totalContacts = 0;
-    const firmContacts = new Map<string, ExtractedContact[]>();
+    const businessContacts = new Map<string, ExtractedContact[]>();
 
-    const totalToEnrich = upsertedFirms.length;
+    const totalToEnrich = upsertedBusinesses.length;
 
-    for (const { id: firmId, firm } of upsertedFirms) {
+    for (const { id: businessId, business } of upsertedBusinesses) {
       if (jobQueue.isCancelled(jobId)) {
         log("Job cancelled");
         await flushJob({ status: "cancelled" });
         return;
       }
 
-      const enrichIdx = firmsEnriched + firmsFailed + 1;
-      log(`Enriching firm ${enrichIdx}/${totalToEnrich}: ${firm.name}`);
+      const enrichIdx = businessesEnriched + businessesFailed + 1;
+      log(`Enriching business ${enrichIdx}/${totalToEnrich}: ${business.name}`);
 
       try {
-        const contacts = await enrichFirm(firmId, firm, jobId, payload.searchLocation, log);
-        firmContacts.set(firmId, contacts);
-        firmsEnriched++;
-        await flushJob({ firms_enriched: firmsEnriched });
+        const contacts = await enrichBusiness(businessId, business, jobId, payload.searchLocation, log);
+        businessContacts.set(businessId, contacts);
+        businessesEnriched++;
+        await flushJob({ businesses_enriched: businessesEnriched });
       } catch (error) {
-        firmsFailed++;
-        log(`✗ Enrichment failed for "${firm.name}": ${error instanceof Error ? error.message : error}`);
-        await flushJob({ firms_failed: firmsFailed });
+        businessesFailed++;
+        log(`✗ Enrichment failed for "${business.name}": ${error instanceof Error ? error.message : error}`);
+        await flushJob({ businesses_failed: businessesFailed });
       }
     }
 
-    log(`Phase 2 complete — ${firmsEnriched} enriched, ${firmsFailed} failed`);
+    log(`Phase 2 complete — ${businessesEnriched} enriched, ${businessesFailed} failed`);
 
     // ── Phase 3: Contact Extraction ─────────────────────────────────
 
     log(`Phase 3 — Inserting contacts`);
 
-    for (const [firmId, contacts] of firmContacts) {
+    for (const [businessId, contacts] of businessContacts) {
       if (jobQueue.isCancelled(jobId)) {
         log("Job cancelled");
         await flushJob({ status: "cancelled" });
@@ -372,7 +390,7 @@ export async function runPipeline(payload: JobStartPayload): Promise<void> {
       }
 
       try {
-        const inserted = await insertContacts(firmId, userId, contacts);
+        const inserted = await insertContacts(businessId, userId, contacts);
         totalContacts += inserted;
         await flushJob({ total_contacts: totalContacts });
       } catch (error) {
@@ -385,7 +403,7 @@ export async function runPipeline(payload: JobStartPayload): Promise<void> {
     // ── Complete ────────────────────────────────────────────────────
 
     const elapsed = ((Date.now() - pipelineStart) / 1000).toFixed(1);
-    log(`Pipeline complete in ${elapsed}s — ${upsertedFirms.length} firms, ${firmsEnriched} enriched, ${totalContacts} contacts`);
+    log(`Pipeline complete in ${elapsed}s — ${upsertedBusinesses.length} businesses, ${businessesEnriched} enriched, ${totalContacts} contacts`);
 
     await flushJob({
       status: "completed",

@@ -6,16 +6,30 @@ import Button from 'primevue/button';
 import Select from 'primevue/select';
 
 const emit = defineEmits<{
-  search: [params: { campaign: 'local' | 'remote'; mode: 'api' | 'scrape'; maxRadius: number; minRadius: number; location: string; lat: number; lng: number }];
+  search: [params: { campaign: 'local' | 'remote'; mode: 'api' | 'scrape'; maxRadius: number; minRadius: number; location: string; lat: number; lng: number; searchQueries: string[] }];
   'update:radiusRange': [value: [number, number]];
 }>();
 
 const location = ref('Austin, TX');
+const searchQueriesText = ref('');
 const radiusRange = ref<[number, number]>([0, 10]);
 const campaign = ref<'local' | 'remote'>('local');
 const mode = ref<'api' | 'scrape'>('api');
 const geocoding = ref(false);
 const geocodeError = ref<string | null>(null);
+
+const MAX_QUERIES = 5;
+const MAX_QUERY_LENGTH = 100;
+const MIN_QUERY_LENGTH = 2;
+
+function parseSearchQueries(text: string): string[] {
+  return text
+    .split(',')
+    .map((q) => q.trim())
+    .filter((q) => q.length >= MIN_QUERY_LENGTH)
+    .slice(0, MAX_QUERIES)
+    .map((q) => q.slice(0, MAX_QUERY_LENGTH));
+}
 
 // Cache geocoded results to avoid re-fetching for the same location
 const geocodeCache = ref<Record<string, { lat: number; lng: number }>>({
@@ -30,7 +44,7 @@ async function geocodeLocation(query: string): Promise<{ lat: number; lng: numbe
 
   const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(normalized)}`;
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'LeadProspector/1.0' },
+    headers: { 'User-Agent': 'LeadProspector/2.0' },
   });
 
   if (!res.ok) throw new Error('Geocoding request failed');
@@ -66,6 +80,13 @@ async function handleSearch() {
   geocoding.value = true;
   geocodeError.value = null;
 
+  const queries = parseSearchQueries(searchQueriesText.value);
+  if (queries.length === 0) {
+    geocodeError.value = 'Enter at least one search query (minimum 2 characters)';
+    geocoding.value = false;
+    return;
+  }
+
   try {
     const coords = await geocodeLocation(location.value);
     emit('search', {
@@ -76,6 +97,7 @@ async function handleSearch() {
       location: location.value.trim(),
       lat: coords.lat,
       lng: coords.lng,
+      searchQueries: queries,
     });
   } catch (e) {
     geocodeError.value = e instanceof Error ? e.message : 'Geocoding failed';
@@ -88,6 +110,14 @@ async function handleSearch() {
 
 <template>
   <div class="search-controls">
+    <div class="controls-row">
+      <div class="field search-queries-field">
+        <label>Search For</label>
+        <InputText v-model="searchQueriesText" placeholder="e.g. plumber, electrician, dentist" class="search-queries-input" />
+        <small class="field-hint">Comma-separated business types (max 5)</small>
+      </div>
+    </div>
+
     <div class="controls-row">
       <div class="field">
         <label>Location</label>
@@ -161,6 +191,19 @@ async function handleSearch() {
 
 .radius-slider {
   margin-top: 0.5rem;
+}
+
+.search-queries-field {
+  flex: 1;
+}
+
+.search-queries-input {
+  width: 100%;
+}
+
+.field-hint {
+  font-size: 0.7rem;
+  color: #94a3b8;
 }
 
 .location-input {

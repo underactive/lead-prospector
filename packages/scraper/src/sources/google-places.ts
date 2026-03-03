@@ -1,8 +1,6 @@
 import { config } from "../config.js";
 import { googlePlacesLimiter } from "../pipeline/rate-limiter.js";
-import type { DiscoveredFirm } from "../types.js";
-
-const SEARCH_QUERIES = ["immigration lawyer", "immigration attorney"];
+import type { DiscoveredBusiness } from "../types.js";
 
 interface PlacesResult {
   id: string;
@@ -22,18 +20,20 @@ interface PlacesResponse {
 }
 
 /**
- * Discover immigration law firms via the Google Places API (new Nearby Search).
+ * Discover businesses via the Google Places API (new Nearby Search).
  *
  * @param lat  Latitude of the search center
  * @param lng  Longitude of the search center
  * @param radiusMeters  Search radius in meters (max 50000)
- * @returns Array of discovered firms
+ * @param searchQueries  Text queries to search for
+ * @returns Array of discovered businesses
  */
 export async function discoverViaPlacesAPI(
   lat: number,
   lng: number,
-  radiusMeters: number = 40000
-): Promise<DiscoveredFirm[]> {
+  radiusMeters: number = 40000,
+  searchQueries: string[]
+): Promise<DiscoveredBusiness[]> {
   const apiKey = config.GOOGLE_PLACES_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -41,10 +41,10 @@ export async function discoverViaPlacesAPI(
     );
   }
 
-  const allFirms: DiscoveredFirm[] = [];
+  const allBusinesses: DiscoveredBusiness[] = [];
   const seenPlaceIds = new Set<string>();
 
-  for (const query of SEARCH_QUERIES) {
+  for (const query of searchQueries) {
     let pageToken: string | undefined;
 
     do {
@@ -93,7 +93,7 @@ export async function discoverViaPlacesAPI(
           if (seenPlaceIds.has(place.id)) continue;
           seenPlaceIds.add(place.id);
 
-          allFirms.push({
+          allBusinesses.push({
             name: place.displayName?.text ?? "Unknown",
             address: place.formattedAddress ?? null,
             phone: place.nationalPhoneNumber ?? null,
@@ -118,7 +118,7 @@ export async function discoverViaPlacesAPI(
   }
 
   console.log(
-    `[google-places] Discovered ${allFirms.length} firms via Places API`
+    `[google-places] Discovered ${allBusinesses.length} businesses via Places API`
   );
-  return allFirms;
+  return allBusinesses;
 }

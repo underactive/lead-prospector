@@ -9,16 +9,6 @@ defineProps<{
   loading: boolean;
 }>();
 
-function isTargetRole(title: string | null): boolean {
-  if (!title) return false;
-  const lower = title.toLowerCase();
-  return (
-    lower.includes('paralegal') ||
-    lower.includes('office manager') ||
-    lower.includes('legal assistant')
-  );
-}
-
 function confidenceSeverity(confidence: string) {
   switch (confidence) {
     case 'high':
@@ -40,21 +30,10 @@ function confidenceSeverity(confidence: string) {
     stripedRows
     class="contacts-table"
   >
-    <Column field="name" header="Name" sortable>
-      <template #body="{ data }">
-        <span :class="{ 'target-contact': isTargetRole(data.title) }">
-          {{ data.name }}
-        </span>
-      </template>
-    </Column>
+    <Column field="name" header="Name" sortable />
     <Column field="title" header="Title" sortable>
       <template #body="{ data }">
-        <Tag
-          v-if="isTargetRole(data.title)"
-          :value="data.title"
-          severity="success"
-        />
-        <span v-else>{{ data.title || '—' }}</span>
+        {{ data.title || '—' }}
       </template>
     </Column>
     <Column field="email" header="Email" sortable>
@@ -80,7 +59,7 @@ function confidenceSeverity(confidence: string) {
       </template>
     </Column>
     <template #empty>
-      <div class="empty-state">No contacts found for this firm.</div>
+      <div class="empty-state">No contacts found for this business.</div>
     </template>
   </DataTable>
 </template>
@@ -88,10 +67,6 @@ function confidenceSeverity(confidence: string) {
 <style scoped>
 .contacts-table {
   font-size: 0.875rem;
-}
-
-.target-contact {
-  font-weight: 600;
 }
 
 .empty-state {

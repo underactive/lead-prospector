@@ -2,7 +2,7 @@ export type Campaign = "local" | "mid" | "remote";
 
 export type ScrapeMode = "api" | "scrape";
 
-export interface Firm {
+export interface Business {
   id: string;
   user_id: string;
   google_place_id: string | null;
@@ -32,7 +32,7 @@ export interface Firm {
 
 export interface Contact {
   id: string;
-  firm_id: string;
+  business_id: string;
   user_id: string;
   name: string;
   title: string | null;
@@ -52,8 +52,9 @@ export interface ScrapeJob {
   status: string;
   campaign: string | null;
   mode: ScrapeMode | null;
-  firms_discovered: number;
-  firms_enriched: number;
+  search_queries: string[];
+  businesses_discovered: number;
+  businesses_enriched: number;
   total_contacts: number;
   error: string | null;
   started_at: string | null;
@@ -62,7 +63,7 @@ export interface ScrapeJob {
   updated_at: string;
 }
 
-export interface DiscoveredFirm {
+export interface DiscoveredBusiness {
   name: string;
   address: string | null;
   phone: string | null;
@@ -94,4 +95,5 @@ export interface JobStartPayload {
   searchLocation: string;
   searchLat: number;
   searchLng: number;
+  searchQueries: string[];
 }

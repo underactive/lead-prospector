@@ -28,9 +28,9 @@ const logLines = computed(() => {
 const progress = computed(() => {
   const j = currentJob.value;
   if (j.status === 'completed') return 100;
-  if (j.firms_discovered === 0) return 5;
-  const enrichProgress = j.firms_discovered > 0
-    ? (j.firms_enriched / j.firms_discovered) * 100
+  if (j.businesses_discovered === 0) return 5;
+  const enrichProgress = j.businesses_discovered > 0
+    ? (j.businesses_enriched / j.businesses_discovered) * 100
     : 0;
   return Math.min(Math.round(enrichProgress), 99);
 });
@@ -48,7 +48,7 @@ function statusSeverity(status: string) {
   }
 }
 
-// Notify parent when job data changes so it can refresh firms
+// Notify parent when job data changes so it can refresh businesses
 watch(activeJob, (job) => {
   if (job) emit('job-updated', job);
 });
@@ -91,15 +91,15 @@ watch(
 
     <div class="job-stats">
       <div class="stat">
-        <span class="stat-value">{{ currentJob.firms_discovered }}</span>
+        <span class="stat-value">{{ currentJob.businesses_discovered }}</span>
         <span class="stat-label">Discovered</span>
       </div>
       <div class="stat">
-        <span class="stat-value">{{ currentJob.firms_enriched }}</span>
+        <span class="stat-value">{{ currentJob.businesses_enriched }}</span>
         <span class="stat-label">Enriched</span>
       </div>
       <div class="stat">
-        <span class="stat-value">{{ currentJob.firms_failed }}</span>
+        <span class="stat-value">{{ currentJob.businesses_failed }}</span>
         <span class="stat-label">Failed</span>
       </div>
       <div class="stat">

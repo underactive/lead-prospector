@@ -1,9 +1,9 @@
 # Lead Prospector
 
-A full-stack lead generation tool for finding immigration law firms. Supports two campaign types:
+A full-stack lead generation tool for finding and qualifying local businesses. Enter any business type (e.g., "immigration lawyer", "offroad fabrication", "dental clinic") and a location to discover, enrich, and export leads. Supports two campaign types:
 
-- **Local Leads** — firms within ~10 miles for in-person visits
-- **Remote Leads** — firms 25+ miles away that need document shipping
+- **Local Leads** — businesses within ~10 miles for in-person visits
+- **Remote Leads** — businesses 25+ miles away for remote outreach
 
 Built with Vue 3, PrimeVue 4, Leaflet.js, Supabase (Auth, PostgreSQL, Realtime), and a Node.js scraper service.
 
@@ -120,7 +120,7 @@ supabase stop && supabase start
 
 ### Google Places API
 
-Enables "API mode" for firm discovery (faster, more reliable than scraping).
+Enables "API mode" for business discovery (faster, more reliable than scraping).
 
 1. Go to [Google Cloud Console > APIs & Services](https://console.cloud.google.com/apis/library)
 2. Enable the **Places API (New)**
@@ -134,7 +134,7 @@ Without this key, the scraper falls back to scrape mode.
 
 ### Yelp Fusion API
 
-Supplements firm data with ratings and reviews.
+Supplements business data with ratings and reviews.
 
 1. Go to [Yelp Fusion](https://fusion.yelp.com/)
 2. Create an app and copy the API key
@@ -158,9 +158,9 @@ soe/
 │   │       └── sources/    # Google Places, website scraper, etc.
 │   └── frontend/       # Vue 3 + PrimeVue + Leaflet
 │       └── src/
-│           ├── views/      # Dashboard, FirmDetail, Jobs, Login
+│           ├── views/      # Dashboard, BusinessDetail, Jobs, Login
 │           ├── components/ # SearchControls, LeadsTable, LeadsMap, etc.
-│           └── composables/# useAuth, useFirms, useJobs, useRealtime
+│           └── composables/# useAuth, useBusinesses, useJobs, useRealtime
 └── package.json        # npm workspaces root
 ```
 

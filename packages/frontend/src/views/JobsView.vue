@@ -83,8 +83,8 @@ async function handleCancel(job: ScrapeJob) {
       </Column>
       <Column field="campaign" header="Campaign" sortable style="width: 100px" />
       <Column field="mode" header="Mode" sortable style="width: 80px" />
-      <Column field="firms_discovered" header="Discovered" sortable style="width: 110px" />
-      <Column field="firms_enriched" header="Enriched" sortable style="width: 100px" />
+      <Column field="businesses_discovered" header="Discovered" sortable style="width: 110px" />
+      <Column field="businesses_enriched" header="Enriched" sortable style="width: 100px" />
       <Column field="total_contacts" header="Contacts" sortable style="width: 100px" />
       <Column field="created_at" header="Created" sortable style="width: 180px">
         <template #body="{ data }">

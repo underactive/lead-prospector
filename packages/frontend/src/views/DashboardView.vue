@@ -2,7 +2,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import Card from 'primevue/card';
-import { useFirms } from '@/composables/useFirms';
+import { useBusinesses } from '@/composables/useBusinesses';
 import { useJobs } from '@/composables/useJobs';
 import SearchControls from '@/components/SearchControls.vue';
 import LeadsTable from '@/components/LeadsTable.vue';
@@ -12,30 +12,30 @@ import JobProgress from '@/components/JobProgress.vue';
 import type { ScrapeJob } from '@/lib/database.types';
 
 const router = useRouter();
-const { firms, loading: firmsLoading, fetchFirms } = useFirms();
+const { businesses, loading: businessesLoading, fetchBusinesses } = useBusinesses();
 const { jobs, fetchJobs, createAndStartJob } = useJobs();
 
 const activeJobId = ref<string | null>(null);
 const mapCenter = ref<[number, number]>([30.2672, -97.7431]);
 const radiusRange = ref<[number, number]>([0, 100]);
 
-const totalFirms = computed(() => firms.value.length);
-const localFirms = computed(() => firms.value.filter((f) => f.campaign === 'local').length);
-const remoteFirms = computed(() => firms.value.filter((f) => f.campaign === 'remote').length);
-const enrichedFirms = computed(() => firms.value.filter((f) => f.scrape_status === 'enriched').length);
+const totalBusinesses = computed(() => businesses.value.length);
+const localBusinesses = computed(() => businesses.value.filter((b) => b.campaign === 'local').length);
+const remoteBusinesses = computed(() => businesses.value.filter((b) => b.campaign === 'remote').length);
+const enrichedBusinesses = computed(() => businesses.value.filter((b) => b.scrape_status === 'enriched').length);
 
 const runningJob = computed<ScrapeJob | null>(() =>
   jobs.value.find((j) => j.status === 'running' || j.status === 'pending') ?? null
 );
 
 // Track last known count to avoid redundant fetches
-let lastFirmCount = 0;
+let lastBusinessCount = 0;
 
 function handleJobUpdated(job: ScrapeJob) {
-  const newCount = job.firms_discovered + job.firms_enriched;
-  if (newCount !== lastFirmCount || job.status === 'completed') {
-    lastFirmCount = newCount;
-    fetchFirms();
+  const newCount = job.businesses_discovered + job.businesses_enriched;
+  if (newCount !== lastBusinessCount || job.status === 'completed') {
+    lastBusinessCount = newCount;
+    fetchBusinesses();
   }
   if (job.status === 'completed' || job.status === 'failed') {
     fetchJobs();
@@ -43,7 +43,7 @@ function handleJobUpdated(job: ScrapeJob) {
 }
 
 onMounted(async () => {
-  await Promise.all([fetchFirms(), fetchJobs()]);
+  await Promise.all([fetchBusinesses(), fetchJobs()]);
 });
 
 async function handleSearch(params: {
@@ -54,6 +54,7 @@ async function handleSearch(params: {
   location: string;
   lat: number;
   lng: number;
+  searchQueries: string[];
 }) {
   try {
     mapCenter.value = [params.lat, params.lng];
@@ -65,6 +66,7 @@ async function handleSearch(params: {
       searchLocation: params.location,
       searchLat: params.lat,
       searchLng: params.lng,
+      searchQueries: params.searchQueries,
     });
     activeJobId.value = job.id;
     await fetchJobs();
@@ -79,19 +81,19 @@ async function handleSearch(params: {
   <div class="dashboard">
     <div class="stats-row">
       <div class="stat-card">
-        <div class="stat-number">{{ totalFirms }}</div>
-        <div class="stat-label">Total Firms</div>
+        <div class="stat-number">{{ totalBusinesses }}</div>
+        <div class="stat-label">Total Businesses</div>
       </div>
       <div class="stat-card stat-local">
-        <div class="stat-number">{{ localFirms }}</div>
+        <div class="stat-number">{{ localBusinesses }}</div>
         <div class="stat-label">Local</div>
       </div>
       <div class="stat-card stat-remote">
-        <div class="stat-number">{{ remoteFirms }}</div>
+        <div class="stat-number">{{ remoteBusinesses }}</div>
         <div class="stat-label">Remote</div>
       </div>
       <div class="stat-card">
-        <div class="stat-number">{{ enrichedFirms }}</div>
+        <div class="stat-number">{{ enrichedBusinesses }}</div>
         <div class="stat-label">Enriched</div>
       </div>
     </div>
@@ -102,14 +104,14 @@ async function handleSearch(params: {
 
     <div class="content-grid">
       <div class="map-section">
-        <LeadsMap :firms="firms" :center="mapCenter" :radius-range="radiusRange" />
+        <LeadsMap :businesses="businesses" :center="mapCenter" :radius-range="radiusRange" />
       </div>
       <div class="table-section">
         <div class="table-header">
           <h2>Leads</h2>
           <ExportButton />
         </div>
-        <LeadsTable :firms="firms" :loading="firmsLoading" />
+        <LeadsTable :businesses="businesses" :loading="businessesLoading" />
       </div>
     </div>
   </div>

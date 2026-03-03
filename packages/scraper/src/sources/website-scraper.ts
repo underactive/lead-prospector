@@ -8,35 +8,10 @@ const STAFF_LINK_PATTERNS = [
   /\babout\b/i,
   /\bstaff\b/i,
   /\bpeople\b/i,
-  /\battorneys?\b/i,
+  /\bdirectory\b/i,
   /\bour-team\b/i,
   /\bprofessionals?\b/i,
   /\bmembers?\b/i,
-];
-
-/** Titles we want to extract — non-attorney support staff */
-const TARGET_TITLE_PATTERNS = [
-  /paralegal/i,
-  /senior\s+paralegal/i,
-  /office\s+manager/i,
-  /legal\s+assistant/i,
-  /immigration\s+specialist/i,
-  /legal\s+secretary/i,
-  /case\s+manager/i,
-  /intake\s+coordinator/i,
-  /administrative\s+assistant/i,
-];
-
-/** Titles we explicitly exclude — these are attorneys */
-const EXCLUDE_TITLE_PATTERNS = [
-  /\battorney\b/i,
-  /\bpartner\b/i,
-  /\bassociate\b/i,
-  /\bj\.?d\.?\b/i,
-  /\besq\.?\b/i,
-  /\bcounsel\b/i,
-  /\blawyer\b/i,
-  /\bof\s+counsel\b/i,
 ];
 
 /** Email regex pattern */
@@ -44,37 +19,6 @@ const EMAIL_REGEX = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
 
 /** Phone regex pattern */
 const PHONE_REGEX = /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
-
-/**
- * Score the seniority of a contact based on their title.
- */
-function scoreSeniority(title: string): number {
-  const lower = title.toLowerCase();
-  if (/senior\s+paralegal/i.test(lower)) return 3;
-  if (/office\s+manager/i.test(lower)) return 3;
-  if (/immigration\s+specialist/i.test(lower)) return 2;
-  if (/case\s+manager/i.test(lower)) return 2;
-  if (/paralegal/i.test(lower)) return 2;
-  if (/legal\s+assistant/i.test(lower)) return 1;
-  if (/intake\s+coordinator/i.test(lower)) return 1;
-  if (/legal\s+secretary/i.test(lower)) return 1;
-  if (/administrative/i.test(lower)) return 1;
-  return 0;
-}
-
-/**
- * Check if a title matches a target non-attorney role.
- */
-function isTargetTitle(title: string): boolean {
-  return TARGET_TITLE_PATTERNS.some((p) => p.test(title));
-}
-
-/**
- * Check if a title should be excluded (attorney roles).
- */
-function isExcludedTitle(title: string): boolean {
-  return EXCLUDE_TITLE_PATTERNS.some((p) => p.test(title));
-}
 
 /**
  * Fetch a URL with rate limiting and return the HTML body.
@@ -157,6 +101,7 @@ function extractEmails($: cheerio.CheerioAPI): string[] {
 
 /**
  * Extract contacts from a parsed HTML page.
+ * Extracts all persons found — no title-based filtering.
  */
 function extractContactsFromPage(
   $: cheerio.CheerioAPI,
@@ -165,11 +110,6 @@ function extractContactsFromPage(
   const contacts: ExtractedContact[] = [];
   const emails = extractEmails($);
 
-  // Strategy: look for elements that contain a person's name and title together.
-  // Common patterns:
-  //   <div class="team-member"><h3>Name</h3><p>Title</p></div>
-  //   <li><strong>Name</strong> - Title</li>
-
   // Collect text blocks that might describe staff
   const textBlocks: { text: string; context: string }[] = [];
 
@@ -177,7 +117,6 @@ function extractContactsFromPage(
   const selectors = [
     ".team-member",
     ".staff-member",
-    ".attorney-card",
     ".person",
     ".bio",
     '[class*="team"]',
@@ -217,11 +156,17 @@ function extractContactsFromPage(
     for (let i = 0; i < parts.length; i++) {
       const part = parts[i].trim();
 
-      if (isTargetTitle(part) && !isExcludedTitle(part)) {
-        // The title is this part — the name is likely the preceding part
+      // Accept any part that looks like a title (non-empty, reasonable length)
+      if (part.length >= 3 && part.length <= 80) {
+        // The name is likely the preceding part
         const possibleName = i > 0 ? parts[i - 1].trim() : null;
 
         if (possibleName && possibleName.length > 2 && possibleName.length < 60) {
+          // Check if this looks like a name-title pair (name has spaces, title has letters)
+          const hasSpace = possibleName.includes(" ");
+          const titleHasLetters = /[a-zA-Z]/.test(part);
+          if (!hasSpace || !titleHasLetters) continue;
+
           // Find a likely email for this person
           const nameParts = possibleName.toLowerCase().split(/\s+/);
           const matchedEmail = emails.find(
@@ -241,7 +186,7 @@ function extractContactsFromPage(
             linkedin_url: null,
             source: sourceUrl,
             confidence: matchedEmail ? 0.8 : 0.5,
-            seniority_score: scoreSeniority(part),
+            seniority_score: 0,
           });
         }
       }
@@ -251,12 +196,6 @@ function extractContactsFromPage(
   return contacts;
 }
 
-/**
- * Scrape a firm's website for staff/team pages and extract non-attorney contacts.
- *
- * @param url  The firm's homepage URL
- * @returns Staff page URL (if found) and extracted contacts
- */
 /**
  * Extract a LinkedIn company page URL from a parsed HTML page.
  * Looks for links pointing to linkedin.com/company/ in the page.
@@ -281,6 +220,12 @@ function extractLinkedInUrl($: cheerio.CheerioAPI): string | null {
   return linkedinUrl;
 }
 
+/**
+ * Scrape a business's website for staff/team pages and extract contacts.
+ *
+ * @param url  The business's homepage URL
+ * @returns Staff page URL (if found) and extracted contacts
+ */
 export async function scrapeWebsite(
   url: string
 ): Promise<{ staffPageUrl?: string; linkedinUrl?: string; contacts: ExtractedContact[] }> {

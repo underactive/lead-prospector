@@ -34,7 +34,7 @@ export function haversineDistance(
 }
 
 /**
- * Categorize a firm into a campaign tier based on distance from the search center.
+ * Categorize a business into a campaign tier based on distance from the search center.
  *
  * - local: < 10 miles
  * - mid: 10-25 miles

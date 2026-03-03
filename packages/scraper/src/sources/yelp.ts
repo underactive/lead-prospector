@@ -13,14 +13,14 @@ interface YelpSearchResponse {
 }
 
 /**
- * Search Yelp for a firm and return its Yelp profile data.
+ * Search Yelp for a business and return its Yelp profile data.
  *
- * @param firmName  Name of the firm to search for
+ * @param businessName  Name of the business to search for
  * @param location  Location string (e.g., "Austin, TX")
  * @returns Yelp URL, rating, and review count (or empty object if no API key)
  */
 export async function searchYelp(
-  firmName: string,
+  businessName: string,
   location: string
 ): Promise<{ yelpUrl?: string; rating?: number; reviewCount?: number }> {
   const apiKey = config.YELP_API_KEY;
@@ -34,9 +34,8 @@ export async function searchYelp(
     await yelpLimiter.acquire();
 
     const params = new URLSearchParams({
-      term: firmName,
+      term: businessName,
       location,
-      categories: "immigration_law",
       limit: "3",
     });
 
@@ -52,7 +51,7 @@ export async function searchYelp(
 
     if (!response.ok) {
       console.warn(
-        `[yelp] HTTP ${response.status} searching for "${firmName}"`
+        `[yelp] HTTP ${response.status} searching for "${businessName}"`
       );
       return {};
     }
@@ -64,18 +63,18 @@ export async function searchYelp(
     }
 
     // Find the best match by name similarity
-    const normalizedFirm = firmName.toLowerCase().trim();
+    const normalizedBusiness = businessName.toLowerCase().trim();
     const match =
       data.businesses.find((b) =>
-        b.name.toLowerCase().includes(normalizedFirm)
+        b.name.toLowerCase().includes(normalizedBusiness)
       ) ??
       data.businesses.find((b) =>
-        normalizedFirm.includes(b.name.toLowerCase())
+        normalizedBusiness.includes(b.name.toLowerCase())
       ) ??
       data.businesses[0];
 
     console.log(
-      `[yelp] Found Yelp listing for "${firmName}": ${match.url}`
+      `[yelp] Found Yelp listing for "${businessName}": ${match.url}`
     );
 
     return {
@@ -85,7 +84,7 @@ export async function searchYelp(
     };
   } catch (error) {
     console.error(
-      `[yelp] Error searching for "${firmName}":`,
+      `[yelp] Error searching for "${businessName}":`,
       error instanceof Error ? error.message : error
     );
     return {};

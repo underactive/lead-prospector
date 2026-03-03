@@ -8,11 +8,11 @@ import {
   LCircle,
 } from '@vue-leaflet/vue-leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { Firm } from '@/lib/database.types';
+import type { Business } from '@/lib/database.types';
 
 const props = withDefaults(
   defineProps<{
-    firms: Firm[];
+    businesses: Business[];
     center?: [number, number];
     radiusRange?: [number, number];
   }>(),
@@ -24,8 +24,8 @@ const props = withDefaults(
 
 const MILES_TO_METERS = 1609.34;
 
-const mapFirms = computed(() =>
-  props.firms.filter((f) => f.latitude != null && f.longitude != null)
+const mapBusinesses = computed(() =>
+  props.businesses.filter((b) => b.latitude != null && b.longitude != null)
 );
 
 function markerColor(campaign: string) {
@@ -69,18 +69,18 @@ function markerColor(campaign: string) {
       />
 
       <LMarker
-        v-for="firm in mapFirms"
-        :key="firm.id"
-        :lat-lng="[firm.latitude!, firm.longitude!]"
+        v-for="business in mapBusinesses"
+        :key="business.id"
+        :lat-lng="[business.latitude!, business.longitude!]"
       >
         <LPopup>
           <div class="popup-content">
-            <strong>{{ firm.name }}</strong>
-            <div v-if="firm.distance_miles != null" class="popup-distance">
-              {{ firm.distance_miles.toFixed(1) }} mi away
+            <strong>{{ business.name }}</strong>
+            <div v-if="business.distance_miles != null" class="popup-distance">
+              {{ business.distance_miles.toFixed(1) }} mi away
             </div>
-            <div v-if="firm.address" class="popup-address">{{ firm.address }}</div>
-            <div v-if="firm.phone" class="popup-phone">{{ firm.phone }}</div>
+            <div v-if="business.address" class="popup-address">{{ business.address }}</div>
+            <div v-if="business.phone" class="popup-phone">{{ business.phone }}</div>
           </div>
         </LPopup>
       </LMarker>

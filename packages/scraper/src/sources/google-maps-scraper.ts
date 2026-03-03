@@ -1,8 +1,8 @@
 import * as cheerio from "cheerio";
-import type { DiscoveredFirm } from "../types.js";
+import type { DiscoveredBusiness } from "../types.js";
 
 /**
- * Best-effort scraping fallback for discovering immigration law firms
+ * Best-effort scraping fallback for discovering businesses
  * when no Google Places API key is available.
  *
  * Fetches Google Maps search results and attempts to parse business listings
@@ -14,8 +14,8 @@ export async function discoverViaMapsScraping(
   query: string,
   lat: number,
   lng: number
-): Promise<DiscoveredFirm[]> {
-  const firms: DiscoveredFirm[] = [];
+): Promise<DiscoveredBusiness[]> {
+  const businesses: DiscoveredBusiness[] = [];
 
   const searchQuery = encodeURIComponent(query);
   const url = `https://www.google.com/maps/search/${searchQuery}/@${lat},${lng},12z`;
@@ -36,7 +36,7 @@ export async function discoverViaMapsScraping(
       console.warn(
         `[maps-scraper] HTTP ${response.status} — unable to fetch Google Maps`
       );
-      return firms;
+      return businesses;
     }
 
     const html = await response.text();
@@ -64,7 +64,7 @@ export async function discoverViaMapsScraping(
           const reviewMatch = match.match(/"(\d+)\s*review/);
 
           if (nameMatch) {
-            firms.push({
+            businesses.push({
               name: nameMatch[1],
               address: null,
               phone: null,
@@ -91,13 +91,10 @@ export async function discoverViaMapsScraping(
         const items = Array.isArray(data) ? data : [data];
 
         for (const item of items) {
-          if (
-            item["@type"] === "LegalService" ||
-            item["@type"] === "Attorney" ||
-            item["@type"] === "LocalBusiness"
-          ) {
-            firms.push({
-              name: item.name ?? "Unknown",
+          // Accept any Schema.org type that has a name
+          if (item.name) {
+            businesses.push({
+              name: item.name,
               address: item.address?.streetAddress ?? null,
               phone: item.telephone ?? null,
               website: item.url ?? null,
@@ -117,22 +114,22 @@ export async function discoverViaMapsScraping(
 
     // Deduplicate by name
     const seen = new Set<string>();
-    const uniqueFirms = firms.filter((f) => {
-      const key = f.name.toLowerCase().trim();
+    const uniqueBusinesses = businesses.filter((b) => {
+      const key = b.name.toLowerCase().trim();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
 
     console.log(
-      `[maps-scraper] Extracted ${uniqueFirms.length} firms (best-effort scraping)`
+      `[maps-scraper] Extracted ${uniqueBusinesses.length} businesses (best-effort scraping)`
     );
-    return uniqueFirms;
+    return uniqueBusinesses;
   } catch (error) {
     console.error(
       `[maps-scraper] Scraping failed:`,
       error instanceof Error ? error.message : error
     );
-    return firms;
+    return businesses;
   }
 }

@@ -1,6 +1,6 @@
 import { corsHeaders } from '../_shared/cors.ts';
 import { createUserClient } from '../_shared/supabase-client.ts';
-import type { Firm, Contact } from '../_shared/types.ts';
+import type { Business, Contact } from '../_shared/types.ts';
 
 Deno.serve(async (req: Request) => {
   // CORS preflight
@@ -38,32 +38,32 @@ Deno.serve(async (req: Request) => {
     const campaign = url.searchParams.get('campaign');
     const status = url.searchParams.get('status');
 
-    // ---------- fetch firms (RLS-scoped to user) ----------
-    let firmsQuery = supabase
-      .from('firms')
+    // ---------- fetch businesses (RLS-scoped to user) ----------
+    let businessesQuery = supabase
+      .from('businesses')
       .select('*')
       .order('distance_miles', { ascending: true });
 
     if (campaign) {
-      firmsQuery = firmsQuery.eq('campaign', campaign);
+      businessesQuery = businessesQuery.eq('campaign', campaign);
     }
     if (status) {
-      firmsQuery = firmsQuery.eq('scrape_status', status);
+      businessesQuery = businessesQuery.eq('scrape_status', status);
     }
 
-    const { data: firms, error: firmsError } = await firmsQuery;
+    const { data: businesses, error: businessesError } = await businessesQuery;
 
-    if (firmsError) {
-      throw firmsError;
+    if (businessesError) {
+      throw businessesError;
     }
 
-    // ---------- for each firm, get best contact ----------
+    // ---------- for each business, get best contact ----------
     const rows: string[] = [];
 
     // CSV header
     rows.push(
       [
-        'Firm',
+        'Business',
         'Address',
         'City',
         'State',
@@ -80,32 +80,32 @@ Deno.serve(async (req: Request) => {
       ].join(','),
     );
 
-    for (const firm of (firms as Firm[]) ?? []) {
+    for (const business of (businesses as Business[]) ?? []) {
       // Best contact = highest seniority_score
       const { data: contacts } = await supabase
         .from('contacts')
         .select('*')
-        .eq('firm_id', firm.id)
+        .eq('business_id', business.id)
         .order('seniority_score', { ascending: false })
         .limit(1);
 
       const contact: Contact | null = contacts?.[0] ?? null;
 
       const csvRow = [
-        escapeCsv(firm.name),
-        escapeCsv(firm.address ?? ''),
-        escapeCsv(firm.city ?? ''),
-        escapeCsv(firm.state ?? ''),
-        escapeCsv(firm.zip ?? ''),
-        escapeCsv(firm.phone ?? ''),
-        escapeCsv(firm.website ?? ''),
-        escapeCsv(firm.linkedin_url ?? ''),
+        escapeCsv(business.name),
+        escapeCsv(business.address ?? ''),
+        escapeCsv(business.city ?? ''),
+        escapeCsv(business.state ?? ''),
+        escapeCsv(business.zip ?? ''),
+        escapeCsv(business.phone ?? ''),
+        escapeCsv(business.website ?? ''),
+        escapeCsv(business.linkedin_url ?? ''),
         escapeCsv(contact?.name ?? ''),
         escapeCsv(contact?.title ?? ''),
         escapeCsv(contact?.email ?? ''),
-        firm.distance_miles != null ? firm.distance_miles.toFixed(1) : '',
-        escapeCsv(firm.campaign),
-        firm.rating != null ? String(firm.rating) : '',
+        business.distance_miles != null ? business.distance_miles.toFixed(1) : '',
+        escapeCsv(business.campaign),
+        business.rating != null ? String(business.rating) : '',
       ].join(',');
 
       rows.push(csvRow);
