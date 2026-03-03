@@ -9,7 +9,13 @@ import type { JobStartPayload, ScrapeMode } from "./types.js";
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:5173',
+    'https://lead-prospector.netlify.app',
+    'https://lead-prospector.esison.dev'
+  ],
+}));
 app.use(express.json());
 
 // ─── Request Logging ──────────────────────────────────────────────────
