@@ -1,0 +1,16 @@
+{
+  "name": "lead-prospector",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/scraper",
+    "packages/frontend"
+  ],
+  "scripts": {
+    "dev": "npm run dev:scraper & npm run dev:frontend",
+    "dev:scraper": "npm run dev -w packages/scraper",
+    "dev:frontend": "npm run dev -w packages/frontend",
+    "build": "npm run build --workspaces --if-present",
+    "build:frontend": "npm run build -w packages/frontend"
+  }
+}
