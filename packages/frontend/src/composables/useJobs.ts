@@ -2,6 +2,8 @@ import { ref } from 'vue';
 import { supabase } from '@/lib/supabase';
 import type { ScrapeJob, ScrapeMode } from '@/lib/database.types';
 
+const scraperBaseUrl = import.meta.env.VITE_SCRAPER_URL ?? '';
+
 export function useJobs() {
   const jobs = ref<ScrapeJob[]>([]);
   const loading = ref(false);
@@ -58,7 +60,7 @@ export function useJobs() {
 
     if (err) throw err;
 
-    const response = await fetch('/api/jobs/start', {
+    const response = await fetch(`${scraperBaseUrl}/api/jobs/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -82,7 +84,7 @@ export function useJobs() {
   }
 
   async function cancelJob(jobId: string) {
-    const response = await fetch(`/api/jobs/${jobId}/cancel`, {
+    const response = await fetch(`${scraperBaseUrl}/api/jobs/${jobId}/cancel`, {
       method: 'POST',
     });
     if (!response.ok) {
