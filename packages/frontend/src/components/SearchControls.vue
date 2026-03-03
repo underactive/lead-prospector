@@ -113,7 +113,7 @@ async function handleSearch() {
     <div class="controls-row">
       <div class="field search-queries-field">
         <label>Search For</label>
-        <InputText v-model="searchQueriesText" placeholder="e.g. plumber, electrician, dentist" class="search-queries-input" />
+        <InputText v-model="searchQueriesText" placeholder="e.g. immigration attorney, immigration lawyer, immigration legal services" class="search-queries-input" />
         <small class="field-hint">Comma-separated business types (max 5)</small>
       </div>
     </div>
