@@ -143,6 +143,192 @@ Supplements business data with ratings and reviews.
    YELP_API_KEY=<your_key>
    ```
 
+## Database Schema
+
+Four tables power the application. All user-facing tables enforce row-level security (RLS) — every query is scoped to `auth.uid() = user_id`.
+
+### Tables
+
+**businesses** — Discovered business leads
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID | Primary key |
+| `user_id` | UUID | FK → `auth.users` (CASCADE) |
+| `job_id` | UUID | FK → `scrape_jobs` (SET NULL) |
+| `google_place_id` | TEXT | Unique per user (dedup key) |
+| `name` | TEXT | Required |
+| `address`, `city`, `state`, `zip` | TEXT | Location fields (`state` defaults to `'TX'`) |
+| `phone`, `website`, `google_maps_url` | TEXT | Contact/link fields |
+| `latitude`, `longitude` | DOUBLE PRECISION | Coordinates from discovery |
+| `distance_miles` | DOUBLE PRECISION | Haversine distance from search center |
+| `linkedin_url`, `yelp_url` | TEXT | Enrichment results |
+| `rating` | REAL | Google/Yelp rating |
+| `review_count` | INT | Default `0` |
+| `campaign` | TEXT | `'local'`, `'mid'`, or `'remote'` |
+| `scrape_status` | TEXT | `'discovered'` → `'enriching'` → `'enriched'` or `'failed'` |
+| `scrape_error` | TEXT | Error detail if enrichment failed |
+| `enriched_at` | TIMESTAMPTZ | When enrichment completed |
+
+**contacts** — People extracted from business websites
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID | Primary key |
+| `user_id` | UUID | FK → `auth.users` (CASCADE) |
+| `business_id` | UUID | FK → `businesses` (CASCADE) |
+| `name` | TEXT | Required |
+| `title`, `email`, `phone` | TEXT | Contact details |
+| `linkedin_url` | TEXT | LinkedIn profile URL |
+| `source` | TEXT | `'website'`, `'google_search'`, or `'directory'` |
+| `confidence` | TEXT | `'high'` (has email), `'medium'`, or `'low'` |
+| `seniority_score` | INT | Default `0` |
+
+**scrape_jobs** — Job tracking and progress
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID | Primary key |
+| `user_id` | UUID | FK → `auth.users` (CASCADE) |
+| `status` | TEXT | `'pending'`, `'running'`, `'completed'`, `'failed'`, `'cancelled'` |
+| `campaign` | TEXT | `'local'` or `'remote'` |
+| `mode` | TEXT | `'api'` or `'scrape'` |
+| `search_location` | TEXT | Human-readable location (default: `'Austin, TX'`) |
+| `search_lat`, `search_lng` | DOUBLE PRECISION | Search center coordinates |
+| `search_queries` | TEXT[] | Array of search terms |
+| `min_radius_miles` | REAL | Default `0` |
+| `max_radius_miles` | REAL | Required (NOT NULL) |
+| `businesses_discovered` | INT | Phase 1 counter |
+| `businesses_enriched` | INT | Phase 2 counter |
+| `businesses_failed` | INT | Phase 2 error counter |
+| `total_contacts` | INT | Phase 3 counter |
+| `log` | TEXT | Timestamped pipeline log lines |
+| `error` | TEXT | Top-level job error |
+| `started_at`, `completed_at` | TIMESTAMPTZ | Job timing |
+
+**api_cache** — Cached API responses (service_role only, no user_id)
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `cache_key` | TEXT | Primary key |
+| `source` | TEXT | API source identifier |
+| `response_json` | TEXT | Cached response body |
+| `expires_at` | TIMESTAMPTZ | TTL expiry |
+
+### Relationships
+
+```
+auth.users ──┬── businesses ──── contacts
+             │        │
+             │        └── scrape_jobs (via job_id)
+             │
+             ├── contacts
+             └── scrape_jobs
+```
+
+- Deleting a user cascades to all their businesses, contacts, and jobs
+- Deleting a business cascades to its contacts
+- Deleting a job sets `businesses.job_id` to NULL (doesn't delete businesses)
+
+### Realtime
+
+The `scrape_jobs` table is published to Supabase Realtime. The frontend subscribes to `UPDATE` events filtered by job ID to receive live progress counters.
+
+## Scraper API
+
+The scraper runs as an Express server on port `3737`. During development, Vite proxies `/api` requests to the scraper automatically.
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/health` | Health check — returns `{ status: "ok" }` |
+| POST | `/api/jobs/start` | Start a scraping job |
+| GET | `/api/jobs/:id/status` | Poll job status from the database |
+| POST | `/api/jobs/:id/cancel` | Cancel a running or queued job |
+
+### Job Start Payload
+
+The frontend inserts a job record into `scrape_jobs` via Supabase first, then POSTs to the scraper to begin processing:
+
+```json
+{
+  "jobId": "uuid",
+  "userId": "uuid",
+  "campaign": "local | remote",
+  "mode": "api | scrape",
+  "searchLocation": "Austin, TX",
+  "searchLat": 30.2672,
+  "searchLng": -97.7431,
+  "searchQueries": ["plumber", "electrician"]
+}
+```
+
+### Validation (Zod)
+
+| Field | Rule |
+|-------|------|
+| `jobId` | Valid UUID |
+| `userId` | Valid UUID |
+| `campaign` | `"local"` or `"remote"` |
+| `mode` | `"api"` or `"scrape"` |
+| `searchQueries` | 1–5 strings, each 2–100 characters |
+| `searchLocation` | String (defaults to `"Austin, TX"`) |
+| `searchLat`, `searchLng` | Numbers (default to Austin coordinates) |
+
+## How the Scraper Works
+
+### Job Queue
+
+Jobs run one at a time in FIFO order. The queue is in-memory — state is lost on restart. When a job is enqueued, it either starts immediately (if idle) or waits behind the current job. Cancellation removes queued jobs instantly; running jobs check for cancellation before processing each business.
+
+### 3-Phase Pipeline
+
+Each job runs three phases sequentially. The pipeline checks for cancellation between phases.
+
+**Phase 1 — Discovery**
+Searches for businesses matching the user's queries near the search location. Uses Google Places API (if key configured) or falls back to Google Maps HTML scraping. Results are deduplicated by `google_place_id` and filtered by campaign type using Haversine distance from the search center:
+
+- **Local:** < 10 miles
+- **Mid:** 10–25 miles (stored but not assigned to either campaign)
+- **Remote:** > 25 miles
+
+Discovered businesses are upserted into the `businesses` table with `scrape_status: "discovered"`.
+
+**Phase 2 — Enrichment** (per business)
+For each discovered business:
+1. Scrapes the business website (Cheerio) to find staff/team pages, extracting contacts and LinkedIn URLs into memory
+2. Searches Yelp for ratings and review counts (if API key configured)
+3. Updates the business record with enrichment data and sets `scrape_status: "enriched"` (or `"failed"` on error)
+
+**Phase 3 — Contact Insertion**
+Persists all contacts collected during enrichment into the `contacts` table. Contacts with an email get `confidence: "high"`; those without get `confidence: "medium"`.
+
+### Rate Limiting
+
+Token-bucket rate limiters throttle external API calls:
+
+| Source | Limit |
+|--------|-------|
+| Google Places API | 10 requests/min |
+| Website scraping | 3 requests/min |
+| Yelp API | 50 requests/min |
+
+Each `acquire()` call blocks until a token is available. Limiters are in-memory and reset on restart.
+
+### Source Modules
+
+| Module | Purpose |
+|--------|---------|
+| `google-places.ts` | Places API v1 text search with location bias and pagination |
+| `google-maps-scraper.ts` | Fallback HTML scraping when no API key (fragile) |
+| `website-scraper.ts` | Cheerio-based scraping for staff pages, emails, LinkedIn URLs |
+| `yelp.ts` | Yelp Fusion API search for ratings and review counts |
+
+### Progress Reporting
+
+The pipeline updates the `scrape_jobs` row after each significant step (businesses discovered, each business enriched, contacts inserted). These updates flow through Supabase Realtime to the frontend via WebSocket, powering the live progress display.
+
 ## Project Structure
 
 ```
