@@ -48,10 +48,21 @@
 - [ ] ContactsList shows extracted contacts for the business
 - [ ] No law-firm-specific role highlighting on contacts
 
+## Job-Based Filtering
+- [ ] Job selector dropdown shows completed/failed/cancelled jobs with format "queries — location (N found) · date"
+- [ ] Selecting a job filters table, map, and stat cards to that job's businesses only
+- [ ] Clearing the selector shows all businesses ("All Searches")
+- [ ] Map recenters to the selected job's search coordinates when switching jobs
+- [ ] Completed job auto-selects in dropdown after finishing
+- [ ] Failed/cancelled jobs do NOT auto-select
+- [ ] Starting a new search does NOT flash the table to zero results
+- [ ] Job with null or empty search_queries renders fallback label in dropdown
+
 ## Export
 - [ ] CSV export downloads file with "Business" column header (not "Firm")
 - [ ] Export uses `businesses` table and `business_id` for contacts
 - [ ] Export respects current filters
+- [ ] CSV export with job selected exports only that job's businesses
 
 ## RLS Isolation
 - [ ] User A cannot see User B's businesses

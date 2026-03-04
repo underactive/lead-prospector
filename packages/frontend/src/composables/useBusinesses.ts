@@ -10,6 +10,7 @@ export function useBusinesses() {
   async function fetchBusinesses(filters?: {
     campaign?: Campaign;
     status?: ScrapeStatus;
+    jobId?: string;
     minDistance?: number;
     maxDistance?: number;
   }) {
@@ -21,6 +22,9 @@ export function useBusinesses() {
         .select('*')
         .order('distance_miles', { ascending: true });
 
+      if (filters?.jobId) {
+        query = query.eq('job_id', filters.jobId);
+      }
       if (filters?.campaign) {
         query = query.eq('campaign', filters.campaign);
       }

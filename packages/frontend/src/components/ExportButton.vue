@@ -2,8 +2,9 @@
 import Button from 'primevue/button';
 import { useExport } from '@/composables/useExport';
 
-defineProps<{
+const props = defineProps<{
   campaign?: string;
+  jobId?: string | null;
 }>();
 
 const { exporting, error, exportCsv } = useExport();
@@ -17,7 +18,7 @@ const { exporting, error, exportCsv } = useExport();
       :loading="exporting"
       severity="secondary"
       size="small"
-      @click="exportCsv({ campaign })"
+      @click="exportCsv({ campaign: props.campaign, jobId: props.jobId ?? undefined })"
     />
     <span v-if="error" class="export-error">{{ error }}</span>
   </div>

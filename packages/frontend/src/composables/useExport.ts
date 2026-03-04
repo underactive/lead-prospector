@@ -5,7 +5,7 @@ export function useExport() {
   const exporting = ref(false);
   const error = ref<string | null>(null);
 
-  async function exportCsv(filters?: { campaign?: string; status?: string }) {
+  async function exportCsv(filters?: { campaign?: string; status?: string; jobId?: string }) {
     exporting.value = true;
     error.value = null;
     try {
@@ -17,6 +17,7 @@ export function useExport() {
       const params = new URLSearchParams();
       if (filters?.campaign) params.set('campaign', filters.campaign);
       if (filters?.status) params.set('status', filters.status);
+      if (filters?.jobId) params.set('job_id', filters.jobId);
 
       const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/export-csv?${params}`;
       const response = await fetch(url, {

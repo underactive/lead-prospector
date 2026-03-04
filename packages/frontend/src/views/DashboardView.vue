@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import Card from 'primevue/card';
 import { useBusinesses } from '@/composables/useBusinesses';
@@ -9,6 +9,7 @@ import LeadsTable from '@/components/LeadsTable.vue';
 import LeadsMap from '@/components/LeadsMap.vue';
 import ExportButton from '@/components/ExportButton.vue';
 import JobProgress from '@/components/JobProgress.vue';
+import JobSelector from '@/components/JobSelector.vue';
 import type { ScrapeJob } from '@/lib/database.types';
 
 const router = useRouter();
@@ -16,6 +17,7 @@ const { businesses, loading: businessesLoading, fetchBusinesses } = useBusinesse
 const { jobs, fetchJobs, createAndStartJob, cancelJob } = useJobs();
 
 const activeJobId = ref<string | null>(null);
+const selectedJobId = ref<string | null>(null);
 const mapCenter = ref<[number, number]>([30.2672, -97.7431]);
 const radiusRange = ref<[number, number]>([0, 100]);
 
@@ -28,6 +30,20 @@ const runningJob = computed<ScrapeJob | null>(() =>
   jobs.value.find((j) => j.status === 'running' || j.status === 'pending') ?? null
 );
 
+function refreshBusinesses() {
+  fetchBusinesses(selectedJobId.value ? { jobId: selectedJobId.value } : undefined);
+}
+
+watch(selectedJobId, (jobId) => {
+  refreshBusinesses();
+  if (jobId) {
+    const job = jobs.value.find((j) => j.id === jobId);
+    if (job) {
+      mapCenter.value = [job.search_lat, job.search_lng];
+    }
+  }
+});
+
 // Track last known count to avoid redundant fetches
 let lastBusinessCount = 0;
 
@@ -35,10 +51,13 @@ function handleJobUpdated(job: ScrapeJob) {
   const newCount = job.businesses_discovered + job.businesses_enriched;
   if (newCount !== lastBusinessCount || job.status === 'completed') {
     lastBusinessCount = newCount;
-    fetchBusinesses();
+    refreshBusinesses();
   }
   if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
     activeJobId.value = null;
+    if (job.status === 'completed') {
+      selectedJobId.value = job.id;
+    }
     fetchJobs();
   }
 }
@@ -82,6 +101,7 @@ async function handleSearch(params: {
       searchQueries: params.searchQueries,
     });
     activeJobId.value = job.id;
+    lastBusinessCount = 0;
     await fetchJobs();
   } catch (e) {
     console.error('Failed to start search:', e);
@@ -122,7 +142,8 @@ async function handleSearch(params: {
       <div class="table-section">
         <div class="table-header">
           <h2>Leads</h2>
-          <ExportButton />
+          <JobSelector v-model="selectedJobId" :jobs="jobs" />
+          <ExportButton :jobId="selectedJobId" />
         </div>
         <LeadsTable :businesses="businesses" :loading="businessesLoading" />
       </div>

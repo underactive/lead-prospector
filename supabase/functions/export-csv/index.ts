@@ -37,6 +37,7 @@ Deno.serve(async (req: Request) => {
     const url = new URL(req.url);
     const campaign = url.searchParams.get('campaign');
     const status = url.searchParams.get('status');
+    const jobId = url.searchParams.get('job_id');
 
     // ---------- fetch businesses (RLS-scoped to user) ----------
     let businessesQuery = supabase
@@ -44,6 +45,9 @@ Deno.serve(async (req: Request) => {
       .select('*')
       .order('distance_miles', { ascending: true });
 
+    if (jobId) {
+      businessesQuery = businessesQuery.eq('job_id', jobId);
+    }
     if (campaign) {
       businessesQuery = businessesQuery.eq('campaign', campaign);
     }
