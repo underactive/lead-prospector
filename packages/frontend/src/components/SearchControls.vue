@@ -13,6 +13,7 @@ const emit = defineEmits<{
   search: [params: { campaign: 'local' | 'remote'; mode: 'api' | 'scrape'; maxRadius: number; minRadius: number; location: string; lat: number; lng: number; searchQueries: string[] }];
   cancel: [];
   'update:radiusRange': [value: [number, number]];
+  'update:center': [value: [number, number]];
 }>();
 
 const location = ref('Austin, TX');
@@ -71,6 +72,17 @@ watch(radiusRange, (val) => {
   emit('update:radiusRange', val as [number, number]);
 }, { immediate: true });
 
+async function handleLocationBlur() {
+  const trimmed = location.value.trim();
+  if (!trimmed) return;
+  try {
+    const coords = await geocodeLocation(trimmed);
+    emit('update:center', [coords.lat, coords.lng]);
+  } catch {
+    // Ignore — geocode errors are shown on search submit
+  }
+}
+
 function setLocalPreset() {
   campaign.value = 'local';
   radiusRange.value = [0, 10];
@@ -126,7 +138,7 @@ async function handleSearch() {
     <div class="controls-row">
       <div class="field">
         <label>Location</label>
-        <InputText v-model="location" placeholder="Austin, TX" class="location-input" />
+        <InputText v-model="location" placeholder="Austin, TX" class="location-input" @blur="handleLocationBlur" @keyup.enter="handleLocationBlur" />
       </div>
 
       <div class="field">

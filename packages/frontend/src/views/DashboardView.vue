@@ -131,7 +131,7 @@ async function handleSearch(params: {
       </div>
     </div>
 
-    <SearchControls :scraping="!!runningJob" @search="handleSearch" @cancel="handleCancel" @update:radius-range="radiusRange = $event" />
+    <SearchControls :scraping="!!runningJob" @search="handleSearch" @cancel="handleCancel" @update:radius-range="radiusRange = $event" @update:center="mapCenter = $event" />
 
     <JobProgress v-if="runningJob" :job="runningJob" @job-updated="handleJobUpdated" />
 
