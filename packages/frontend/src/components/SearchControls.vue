@@ -5,8 +5,13 @@ import Slider from 'primevue/slider';
 import Button from 'primevue/button';
 import Select from 'primevue/select';
 
+const props = defineProps<{
+  scraping?: boolean;
+}>();
+
 const emit = defineEmits<{
   search: [params: { campaign: 'local' | 'remote'; mode: 'api' | 'scrape'; maxRadius: number; minRadius: number; location: string; lat: number; lng: number; searchQueries: string[] }];
+  cancel: [];
   'update:radiusRange': [value: [number, number]];
 }>();
 
@@ -142,7 +147,8 @@ async function handleSearch() {
       </div>
 
       <div class="action-buttons">
-        <Button label="New Search" icon="pi pi-search" size="small" :loading="geocoding" @click="handleSearch" />
+        <Button label="New Search" icon="pi pi-search" size="small" :loading="geocoding" :disabled="props.scraping" @click="handleSearch" />
+        <Button v-if="props.scraping" label="Cancel" icon="pi pi-times" severity="danger" size="small" outlined @click="emit('cancel')" />
       </div>
     </div>
 

@@ -13,7 +13,7 @@ import type { ScrapeJob } from '@/lib/database.types';
 
 const router = useRouter();
 const { businesses, loading: businessesLoading, fetchBusinesses } = useBusinesses();
-const { jobs, fetchJobs, createAndStartJob } = useJobs();
+const { jobs, fetchJobs, createAndStartJob, cancelJob } = useJobs();
 
 const activeJobId = ref<string | null>(null);
 const mapCenter = ref<[number, number]>([30.2672, -97.7431]);
@@ -37,8 +37,21 @@ function handleJobUpdated(job: ScrapeJob) {
     lastBusinessCount = newCount;
     fetchBusinesses();
   }
-  if (job.status === 'completed' || job.status === 'failed') {
+  if (job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') {
+    activeJobId.value = null;
     fetchJobs();
+  }
+}
+
+async function handleCancel() {
+  if (runningJob.value) {
+    try {
+      await cancelJob(runningJob.value.id);
+      activeJobId.value = null;
+      await fetchJobs();
+    } catch (e) {
+      console.error('Failed to cancel job:', e);
+    }
   }
 }
 
@@ -98,7 +111,7 @@ async function handleSearch(params: {
       </div>
     </div>
 
-    <SearchControls @search="handleSearch" @update:radius-range="radiusRange = $event" />
+    <SearchControls :scraping="!!runningJob" @search="handleSearch" @cancel="handleCancel" @update:radius-range="radiusRange = $event" />
 
     <JobProgress v-if="runningJob" :job="runningJob" @job-updated="handleJobUpdated" />
 

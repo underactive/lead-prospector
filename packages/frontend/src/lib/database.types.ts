@@ -1,6 +1,6 @@
 export type Campaign = 'local' | 'mid' | 'remote';
 export type ScrapeStatus = 'discovered' | 'enriching' | 'enriched' | 'failed';
-export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type ScrapeMode = 'api' | 'scrape';
 export type ContactSource = 'website' | 'google_search' | 'directory';
 export type Confidence = 'high' | 'medium' | 'low';
