@@ -90,7 +90,7 @@ function setLocalPreset() {
 
 function setRemotePreset() {
   campaign.value = 'remote';
-  radiusRange.value = [25, 100];
+  radiusRange.value = [25, 200];
 }
 
 async function handleSearch() {
@@ -150,7 +150,7 @@ async function handleSearch() {
     <div class="controls-row">
       <div class="field slider-field">
         <label>Radius: {{ radiusRange[0] }} - {{ radiusRange[1] }} mi</label>
-        <Slider v-model="radiusRange" range :min="0" :max="100" class="radius-slider" />
+        <Slider v-model="radiusRange" range :min="0" :max="200" class="radius-slider" />
       </div>
 
       <div class="preset-buttons">
